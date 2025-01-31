@@ -4,10 +4,11 @@ CLI interface for PropsOS.
 import os
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any, Tuple
 import subprocess
 import time
 import json
+from uuid import UUID
 
 import click
 from dotenv import load_dotenv, find_dotenv
@@ -17,8 +18,73 @@ from rich.prompt import Prompt
 from rich import print as rprint
 
 from props_os.core.client import PropsOS
+from props_os.core.taxonomy import (
+    DataType, EdgeType, MemoryMetadata, EdgeMetadata,
+    ActivitySubtype, KnowledgeSubtype, DecisionSubtype, MediaSubtype
+)
 
 console = Console()
+
+def validate_uuid(ctx, param, value: str) -> str:
+    """Validate UUID format."""
+    try:
+        UUID(value)
+        return value
+    except ValueError:
+        raise click.BadParameter(f"Invalid UUID format: {value}")
+
+def validate_metadata(metadata_str: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Parse and validate metadata JSON."""
+    if not metadata_str:
+        return None
+    try:
+        metadata = json.loads(metadata_str)
+        if not isinstance(metadata, dict):
+            raise click.BadParameter("Metadata must be a JSON object")
+        return metadata
+    except json.JSONDecodeError:
+        raise click.BadParameter("Invalid JSON format")
+
+def validate_memory_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate memory metadata against our taxonomy."""
+    if "type" not in metadata:
+        raise click.BadParameter("Memory metadata must include 'type' field")
+    if "subtype" not in metadata:
+        raise click.BadParameter("Memory metadata must include 'subtype' field")
+    
+    try:
+        data_type = DataType(metadata["type"])
+        subtype_map = {
+            DataType.ACTIVITY: ActivitySubtype,
+            DataType.KNOWLEDGE: KnowledgeSubtype,
+            DataType.DECISION: DecisionSubtype,
+            DataType.MEDIA: MediaSubtype
+        }
+        subtype_enum = subtype_map[data_type]
+        subtype = subtype_enum(metadata["subtype"])
+        
+        # Create MemoryMetadata to validate the full structure
+        MemoryMetadata(**metadata)
+        return metadata
+    except ValueError as e:
+        raise click.BadParameter(str(e))
+
+def validate_edge_type(ctx, param, value: str) -> str:
+    """Validate edge relationship type."""
+    try:
+        EdgeType(value)
+        return value
+    except ValueError:
+        valid_types = [e.value for e in EdgeType]
+        raise click.BadParameter(
+            f"Invalid relationship type. Must be one of: {', '.join(valid_types)}"
+        )
+
+def validate_weight(ctx, param, value: float) -> float:
+    """Validate edge weight."""
+    if not 0.0 <= value <= 1.0:
+        raise click.BadParameter("Weight must be between 0.0 and 1.0")
+    return value
 
 def load_env():
     """Load environment variables from .env file in current directory."""
@@ -117,14 +183,14 @@ def register(name: str, description: Optional[str] = None, metadata: Optional[st
     """Register a new agent."""
     try:
         client = get_client()
-        metadata_dict = json.loads(metadata) if metadata else None
+        metadata_dict = validate_metadata(metadata)
         agent = client.register_agent(name, description, metadata_dict)
         console.print(f"[green]✓[/] Agent registered with ID: {agent.id}")
     except Exception as e:
         console.print(f"[red]Error:[/] {str(e)}")
 
 @agent.command()
-@click.argument("agent_id")
+@click.argument("agent_id", callback=validate_uuid)
 def unregister(agent_id: str):
     """Unregister an agent."""
     try:
@@ -143,61 +209,53 @@ def memory():
 
 @memory.command()
 @click.argument("content")
-@click.option("--agent-id", "-a", help="Agent ID to associate with the memory")
+@click.option("--agent-id", "-a", callback=validate_uuid, help="Agent ID to associate with the memory")
 @click.option("--metadata", "-m", help="Memory metadata as JSON")
 def remember(content: str, agent_id: Optional[str] = None, metadata: Optional[str] = None):
     """Store a new memory."""
     try:
         client = get_client()
-        metadata_dict = json.loads(metadata) if metadata else None
+        metadata_dict = validate_metadata(metadata)
+        if metadata_dict:
+            metadata_dict = validate_memory_metadata(metadata_dict)
         memory = client.remember(content, agent_id, metadata_dict)
         console.print(f"[green]✓[/] Memory stored with ID: {memory.id}")
+    except click.BadParameter as e:
+        console.print(f"[red]Error:[/] {str(e)}")
+        raise
     except Exception as e:
         console.print(f"[red]Error:[/] {str(e)}")
+        raise click.ClickException(str(e))
 
 @memory.command()
 @click.argument("query")
-@click.option("--agent-id", "-a", help="Filter memories by agent ID")
-@click.option("--limit", "-l", default=5, help="Maximum number of results")
-@click.option("--threshold", "-t", default=0.7, help="Similarity threshold (0-1)")
-@click.option("--filter", "-f", multiple=True, help="Add metadata filters in format key=value or key.operator=value (e.g., type=note or confidence._gt=0.8)")
-def recall(query: str, agent_id: Optional[str] = None, limit: int = 5, threshold: float = 0.7, filter: tuple = ()):
-    """
-    Search for similar memories with optional filters.
-    
-    Examples:
-        props-os memory recall "What do you know about me?" -f type=note
-        props-os memory recall "Important insights" -f confidence._gt=0.8 -f tags._contains=["important"]
-        props-os memory recall "Recent updates" -f created_at._gte=2024-01-01
-    """
+@click.option("--agent-id", "-a", callback=validate_uuid, help="Filter memories by agent ID")
+@click.option("--limit", "-l", default=5, type=click.IntRange(1, 100), help="Maximum number of results (1-100)")
+@click.option("--threshold", "-t", default=0.7, callback=validate_weight, help="Similarity threshold (0-1)")
+@click.option("--filter", "-f", multiple=True, help="Add metadata filters in format key=value or key.operator=value")
+def recall(query: str, agent_id: Optional[str] = None, limit: int = 5, threshold: float = 0.7, filter: Tuple[str, ...] = ()):
+    """Search for similar memories with optional filters."""
     try:
         client = get_client()
-        
-        # Parse filters
         filters = {}
+        
         for f in filter:
             if "=" not in f:
-                console.print(f"[red]Error:[/] Invalid filter format: {f}")
-                return
-                
+                raise click.BadParameter(f"Invalid filter format: {f}")
+            
             key, value = f.split("=", 1)
             
-            # Handle complex filters with operators
             if "._" in key:
                 base_key, operator = key.split("._", 1)
                 try:
-                    # Try to parse as JSON for arrays and objects
                     parsed_value = json.loads(value)
                 except json.JSONDecodeError:
-                    # If not JSON, use as string
                     parsed_value = value
                 filters[base_key] = {f"_{operator}": parsed_value}
             else:
                 try:
-                    # Try to parse as JSON for arrays and objects
                     parsed_value = json.loads(value)
                 except json.JSONDecodeError:
-                    # If not JSON, use as string
                     parsed_value = value
                 filters[key] = parsed_value
         
@@ -208,7 +266,7 @@ def recall(query: str, agent_id: Optional[str] = None, limit: int = 5, threshold
         
         console.print(f"\n[green]Found {len(memories)} matching memories:[/]\n")
         for memory in memories:
-            metadata_str = json.dumps(memory.metadata, indent=2) if memory.metadata else "None"
+            metadata_str = json.dumps(memory.metadata.model_dump(), indent=2)
             console.print(Panel(
                 f"{memory.content}\n\n"
                 f"[blue]Agent:[/] {memory.agent_id or 'None'}\n"
@@ -222,7 +280,7 @@ def recall(query: str, agent_id: Optional[str] = None, limit: int = 5, threshold
         console.print(f"[red]Error:[/] {str(e)}")
 
 @memory.command()
-@click.argument("memory_id")
+@click.argument("memory_id", callback=validate_uuid)
 def forget(memory_id: str):
     """Delete a memory."""
     try:
@@ -235,18 +293,14 @@ def forget(memory_id: str):
         console.print(f"[red]Error:[/] {str(e)}")
 
 @memory.command()
-@click.argument("source_id")
-@click.argument("target_id")
-@click.option("--relationship", "-r", required=True, help="Type of relationship (e.g., 'related_to', 'version_of')")
-@click.option("--weight", "-w", default=1.0, help="Weight of the connection (0-1)")
+@click.argument("source_id", callback=validate_uuid)
+@click.argument("target_id", callback=validate_uuid)
+@click.option("--relationship", "-r", required=True, callback=validate_edge_type, 
+              help="Type of relationship (e.g., 'related_to', 'version_of')")
+@click.option("--weight", "-w", default=1.0, callback=validate_weight, 
+              help="Weight of the connection (0-1)")
 def link(source_id: str, target_id: str, relationship: str, weight: float):
-    """
-    Create a link between two memories.
-    
-    Examples:
-        props-os memory link memory-id-1 memory-id-2 -r related_to
-        props-os memory link memory-id-1 memory-id-2 -r version_of -w 0.8
-    """
+    """Create a link between two memories."""
     try:
         client = get_client()
         edge = client.link_memories(source_id, target_id, relationship, weight)
@@ -255,8 +309,8 @@ def link(source_id: str, target_id: str, relationship: str, weight: float):
         console.print(f"[red]Error:[/] {str(e)}")
 
 @memory.command()
-@click.argument("source_id")
-@click.argument("target_id")
+@click.argument("source_id", callback=validate_uuid)
+@click.argument("target_id", callback=validate_uuid)
 @click.option("--relationship", "-r", help="Type of relationship to remove (if not specified, removes all relationships)")
 def unlink(source_id: str, target_id: str, relationship: Optional[str] = None):
     """
@@ -276,7 +330,7 @@ def unlink(source_id: str, target_id: str, relationship: Optional[str] = None):
         console.print(f"[red]Error:[/] {str(e)}")
 
 @memory.command()
-@click.argument("memory_id")
+@click.argument("memory_id", callback=validate_uuid)
 @click.argument("content")
 @click.option("--metadata", "-m", help="Updated metadata as JSON")
 @click.option("--no-version", is_flag=True, help="Don't create a version link to the previous memory")
@@ -291,7 +345,7 @@ def update(memory_id: str, content: str, metadata: Optional[str] = None, no_vers
     """
     try:
         client = get_client()
-        metadata_dict = json.loads(metadata) if metadata else None
+        metadata_dict = validate_metadata(metadata)
         new_memory = client.update_memory(
             memory_id=memory_id,
             content=content,
@@ -303,7 +357,7 @@ def update(memory_id: str, content: str, metadata: Optional[str] = None, no_vers
         console.print(f"[red]Error:[/] {str(e)}")
 
 @memory.command()
-@click.argument("memory_id")
+@click.argument("memory_id", callback=validate_uuid)
 @click.option("--relationship", "-r", help="Filter by relationship type")
 @click.option("--depth", "-d", default=1, help="Maximum depth to traverse")
 def connections(memory_id: str, relationship: Optional[str] = None, depth: int = 1):
