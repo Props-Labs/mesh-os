@@ -11,13 +11,6 @@ A lightweight multi-agent memory system with vector search capabilities, built o
 - 🛠️ Easy-to-use CLI
 - 📚 Python SDK for seamless integration
 
-## Prerequisites
-
-- Python 3.9+
-- Docker and Docker Compose
-- Poetry (Python package manager)
-- OpenAI API key (for embeddings)
-
 ## Quick Start
 
 1. Install the package:
