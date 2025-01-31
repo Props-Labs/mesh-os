@@ -1,0 +1,17 @@
+table:
+  name: memories
+  schema: public
+configuration:
+  custom_root_fields: {}
+  custom_name: memories
+object_relationships:
+  - name: agent
+    using:
+      foreign_key_constraint_on: agent_id
+computed_fields:
+  - name: similarity_score
+    definition:
+      function:
+        name: search_memories
+        schema: public
+    comment: Computes similarity score for vector search 

@@ -33,6 +33,16 @@ class Memory:
     created_at: str
     updated_at: str
 
+@dataclass
+class MemoryEdge:
+    """A connection between two memories."""
+    id: str
+    source_memory: str
+    target_memory: str
+    relationship: str
+    weight: float
+    created_at: str
+
 class GraphQLError(Exception):
     """Raised when a GraphQL query fails."""
     pass
@@ -250,4 +260,147 @@ class PropsOS:
         }
         """
         result = self._execute_query(query, {"id": memory_id})
-        return bool(result["data"]["delete_memories_by_pk"]) 
+        return bool(result["data"]["delete_memories_by_pk"])
+
+    def link_memories(
+        self,
+        source_memory_id: str,
+        target_memory_id: str,
+        relationship: str,
+        weight: float = 1.0
+    ) -> MemoryEdge:
+        """Create a link between two memories."""
+        query = """
+        mutation LinkMemories(
+            $source_memory: uuid!,
+            $target_memory: uuid!,
+            $relationship: String!,
+            $weight: float8!
+        ) {
+            insert_memory_edges_one(object: {
+                source_memory: $source_memory,
+                target_memory: $target_memory,
+                relationship: $relationship,
+                weight: $weight
+            }) {
+                id
+                source_memory
+                target_memory
+                relationship
+                weight
+                created_at
+            }
+        }
+        """
+        result = self._execute_query(query, {
+            "source_memory": source_memory_id,
+            "target_memory": target_memory_id,
+            "relationship": relationship,
+            "weight": weight
+        })
+        edge_data = result["data"]["insert_memory_edges_one"]
+        return MemoryEdge(**edge_data)
+
+    def unlink_memories(
+        self,
+        source_memory_id: str,
+        target_memory_id: str,
+        relationship: Optional[str] = None
+    ) -> bool:
+        """Remove links between two memories."""
+        conditions = {
+            "source_memory": {"_eq": source_memory_id},
+            "target_memory": {"_eq": target_memory_id}
+        }
+        if relationship:
+            conditions["relationship"] = {"_eq": relationship}
+        
+        query = """
+        mutation UnlinkMemories($where: memory_edges_bool_exp!) {
+            delete_memory_edges(where: $where) {
+                affected_rows
+            }
+        }
+        """
+        result = self._execute_query(query, {
+            "where": conditions
+        })
+        return result["data"]["delete_memory_edges"]["affected_rows"] > 0
+
+    def update_memory(
+        self,
+        memory_id: str,
+        content: str,
+        metadata: Optional[Dict] = None,
+        create_version_edge: bool = True
+    ) -> Memory:
+        """Update a memory and optionally create a version edge to the previous version."""
+        # First get the current memory
+        query = """
+        query GetMemory($id: uuid!) {
+            memories_by_pk(id: $id) {
+                id
+                agent_id
+                content
+                metadata
+                embedding
+                created_at
+                updated_at
+            }
+        }
+        """
+        result = self._execute_query(query, {"id": memory_id})
+        old_memory = result["data"]["memories_by_pk"]
+        if not old_memory:
+            raise ValueError(f"Memory {memory_id} not found")
+
+        # Create new memory
+        new_memory = self.remember(
+            content=content,
+            agent_id=old_memory["agent_id"],
+            metadata=metadata or old_memory["metadata"]
+        )
+
+        # Create version edge if requested
+        if create_version_edge:
+            self.link_memories(
+                source_memory_id=old_memory["id"],
+                target_memory_id=new_memory.id,
+                relationship="version_of",
+                weight=1.0
+            )
+
+        return new_memory
+
+    def get_connected_memories(
+        self,
+        memory_id: str,
+        relationship: Optional[str] = None,
+        max_depth: int = 1
+    ) -> List[Dict]:
+        """Get memories connected to the given memory."""
+        query = """
+        query GetConnectedMemories(
+            $memory_id: uuid!,
+            $relationship: String,
+            $max_depth: Int!
+        ) {
+            get_connected_memories(
+                memory_id: $memory_id,
+                relationship_type: $relationship,
+                max_depth: $max_depth
+            ) {
+                source_id
+                target_id
+                relationship
+                weight
+                depth
+            }
+        }
+        """
+        result = self._execute_query(query, {
+            "memory_id": memory_id,
+            "relationship": relationship,
+            "max_depth": max_depth
+        })
+        return result["data"]["get_connected_memories"] 

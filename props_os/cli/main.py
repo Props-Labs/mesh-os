@@ -234,6 +234,109 @@ def forget(memory_id: str):
     except Exception as e:
         console.print(f"[red]Error:[/] {str(e)}")
 
+@memory.command()
+@click.argument("source_id")
+@click.argument("target_id")
+@click.option("--relationship", "-r", required=True, help="Type of relationship (e.g., 'related_to', 'version_of')")
+@click.option("--weight", "-w", default=1.0, help="Weight of the connection (0-1)")
+def link(source_id: str, target_id: str, relationship: str, weight: float):
+    """
+    Create a link between two memories.
+    
+    Examples:
+        props-os memory link memory-id-1 memory-id-2 -r related_to
+        props-os memory link memory-id-1 memory-id-2 -r version_of -w 0.8
+    """
+    try:
+        client = get_client()
+        edge = client.link_memories(source_id, target_id, relationship, weight)
+        console.print(f"[green]✓[/] Created {relationship} link with ID: {edge.id}")
+    except Exception as e:
+        console.print(f"[red]Error:[/] {str(e)}")
+
+@memory.command()
+@click.argument("source_id")
+@click.argument("target_id")
+@click.option("--relationship", "-r", help="Type of relationship to remove (if not specified, removes all relationships)")
+def unlink(source_id: str, target_id: str, relationship: Optional[str] = None):
+    """
+    Remove links between two memories.
+    
+    Examples:
+        props-os memory unlink memory-id-1 memory-id-2
+        props-os memory unlink memory-id-1 memory-id-2 -r related_to
+    """
+    try:
+        client = get_client()
+        if client.unlink_memories(source_id, target_id, relationship):
+            console.print(f"[green]✓[/] Removed link(s) between memories")
+        else:
+            console.print("[yellow]No matching links found[/]")
+    except Exception as e:
+        console.print(f"[red]Error:[/] {str(e)}")
+
+@memory.command()
+@click.argument("memory_id")
+@click.argument("content")
+@click.option("--metadata", "-m", help="Updated metadata as JSON")
+@click.option("--no-version", is_flag=True, help="Don't create a version link to the previous memory")
+def update(memory_id: str, content: str, metadata: Optional[str] = None, no_version: bool = False):
+    """
+    Update a memory's content and optionally create a version link.
+    
+    Examples:
+        props-os memory update memory-id "Updated content"
+        props-os memory update memory-id "Updated content" -m '{"confidence": 0.9}'
+        props-os memory update memory-id "Updated content" --no-version
+    """
+    try:
+        client = get_client()
+        metadata_dict = json.loads(metadata) if metadata else None
+        new_memory = client.update_memory(
+            memory_id=memory_id,
+            content=content,
+            metadata=metadata_dict,
+            create_version_edge=not no_version
+        )
+        console.print(f"[green]✓[/] Created new version with ID: {new_memory.id}")
+    except Exception as e:
+        console.print(f"[red]Error:[/] {str(e)}")
+
+@memory.command()
+@click.argument("memory_id")
+@click.option("--relationship", "-r", help="Filter by relationship type")
+@click.option("--depth", "-d", default=1, help="Maximum depth to traverse")
+def connections(memory_id: str, relationship: Optional[str] = None, depth: int = 1):
+    """
+    View memories connected to the given memory.
+    
+    Examples:
+        props-os memory connections memory-id
+        props-os memory connections memory-id -r version_of
+        props-os memory connections memory-id -d 2
+    """
+    try:
+        client = get_client()
+        edges = client.get_connected_memories(memory_id, relationship, depth)
+        
+        if not edges:
+            console.print("[yellow]No connected memories found[/]")
+            return
+        
+        console.print(f"\n[green]Found {len(edges)} connections:[/]\n")
+        for edge in edges:
+            console.print(Panel(
+                f"[blue]Source:[/] {edge['source_id']}\n"
+                f"[blue]Target:[/] {edge['target_id']}\n"
+                f"[blue]Relationship:[/] {edge['relationship']}\n"
+                f"[blue]Weight:[/] {edge['weight']}\n"
+                f"[blue]Depth:[/] {edge['depth']}",
+                title="Memory Connection",
+                border_style="blue"
+            ))
+    except Exception as e:
+        console.print(f"[red]Error:[/] {str(e)}")
+
 @cli.command()
 @click.argument("project_name")
 def create(project_name: str):
@@ -502,6 +605,14 @@ def up():
                             }
                         },
                         {
+                            "type": "pg_track_table",
+                            "args": {
+                                "source": "default",
+                                "schema": "public",
+                                "name": "memory_edges"
+                            }
+                        },
+                        {
                             "type": "pg_create_array_relationship",
                             "args": {
                                 "table": {
@@ -532,6 +643,74 @@ def up():
                                 "source": "default",
                                 "using": {
                                     "foreign_key_constraint_on": "agent_id"
+                                }
+                            }
+                        },
+                        {
+                            "type": "pg_create_array_relationship",
+                            "args": {
+                                "table": {
+                                    "schema": "public",
+                                    "name": "memories"
+                                },
+                                "name": "incoming_edges",
+                                "source": "default",
+                                "using": {
+                                    "foreign_key_constraint_on": {
+                                        "column": "target_memory",
+                                        "table": {
+                                            "schema": "public",
+                                            "name": "memory_edges"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "type": "pg_create_array_relationship",
+                            "args": {
+                                "table": {
+                                    "schema": "public",
+                                    "name": "memories"
+                                },
+                                "name": "outgoing_edges",
+                                "source": "default",
+                                "using": {
+                                    "foreign_key_constraint_on": {
+                                        "column": "source_memory",
+                                        "table": {
+                                            "schema": "public",
+                                            "name": "memory_edges"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "type": "pg_create_object_relationship",
+                            "args": {
+                                "table": {
+                                    "schema": "public",
+                                    "name": "memory_edges"
+                                },
+                                "name": "source",
+                                "source": "default",
+                                "using": {
+                                    "foreign_key_constraint_on": "source_memory"
+                                }
+                            }
+                        },
+                        {
+                            "type": "pg_create_object_relationship",
+                            "args": {
+                                "table": {
+                                    "schema": "public",
+                                    "name": "memory_edges"
+                                },
+                                "name": "target",
+                                "source": "default",
+                                "using": {
+                                    "foreign_key_constraint_on": "target_memory"
                                 }
                             }
                         }

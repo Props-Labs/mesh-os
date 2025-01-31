@@ -1,0 +1,80 @@
+{
+  "version": 3,
+  "sources": [
+    {
+      "name": "default",
+      "kind": "postgres",
+      "tables": [
+        {
+          "table": {
+            "schema": "public",
+            "name": "agents"
+          },
+          "array_relationships": [
+            {
+              "name": "memories",
+              "using": {
+                "foreign_key_constraint_on": {
+                  "column": "agent_id",
+                  "table": {
+                    "schema": "public",
+                    "name": "memories"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "table": {
+            "schema": "public",
+            "name": "memories"
+          },
+          "object_relationships": [
+            {
+              "name": "agent",
+              "using": {
+                "foreign_key_constraint_on": "agent_id"
+              }
+            }
+          ],
+          "computed_fields": [
+            {
+              "name": "similarity_score",
+              "definition": {
+                "function": {
+                  "schema": "public",
+                  "name": "search_memories"
+                }
+              },
+              "comment": "Computes similarity score for vector search"
+            }
+          ]
+        }
+      ],
+      "functions": [
+        {
+          "function": {
+            "schema": "public",
+            "name": "search_memories"
+          }
+        }
+      ],
+      "configuration": {
+        "connection_info": {
+          "use_prepared_statements": true,
+          "database_url": {
+            "from_env": "HASURA_GRAPHQL_DATABASE_URL"
+          },
+          "isolation_level": "read-committed",
+          "pool_settings": {
+            "connection_lifetime": 600,
+            "retries": 1,
+            "idle_timeout": 180,
+            "max_connections": 50
+          }
+        }
+      }
+    }
+  ]
+} 

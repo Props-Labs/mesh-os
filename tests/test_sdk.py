@@ -11,7 +11,7 @@ import pytest
 from openai import OpenAI
 
 from props_os import PropsOS
-from props_os.core.client import Agent, GraphQLError, Memory
+from props_os.core.client import Agent, GraphQLError, Memory, MemoryEdge
 
 # Test data
 TEST_AGENT = {
@@ -30,6 +30,15 @@ TEST_MEMORY = {
     "embedding": [0.1] * 1536,  # Matches OpenAI's embedding size
     "created_at": "2024-01-01T00:00:00Z",
     "updated_at": "2024-01-01T00:00:00Z"
+}
+
+TEST_MEMORY_EDGE = {
+    "id": "test-edge-id",
+    "source_memory": "test-memory-id-1",
+    "target_memory": "test-memory-id-2",
+    "relationship": "related_to",
+    "weight": 1.0,
+    "created_at": "2024-01-01T00:00:00Z"
 }
 
 @pytest.fixture(autouse=True)
@@ -205,6 +214,150 @@ class TestMemoryOperations:
         
         # Verify GraphQL mutation
         verify_graphql_query(mock_requests, "mutation Forget")
+
+class TestMemoryEdges:
+    """Tests for memory edge operations."""
+    
+    def test_link_memories(self, props, mock_requests):
+        """Test creating a link between memories."""
+        mock_requests.return_value.json.return_value = {
+            "data": {
+                "insert_memory_edges_one": TEST_MEMORY_EDGE
+            }
+        }
+        
+        edge = props.link_memories(
+            source_memory_id="test-memory-id-1",
+            target_memory_id="test-memory-id-2",
+            relationship="related_to"
+        )
+        
+        assert isinstance(edge, MemoryEdge)
+        assert edge.id == TEST_MEMORY_EDGE["id"]
+        assert edge.source_memory == TEST_MEMORY_EDGE["source_memory"]
+        assert edge.target_memory == TEST_MEMORY_EDGE["target_memory"]
+        assert edge.relationship == TEST_MEMORY_EDGE["relationship"]
+        assert edge.weight == TEST_MEMORY_EDGE["weight"]
+    
+    def test_unlink_memories(self, props, mock_requests):
+        """Test removing links between memories."""
+        mock_requests.return_value.json.return_value = {
+            "data": {
+                "delete_memory_edges": {
+                    "affected_rows": 1
+                }
+            }
+        }
+        
+        result = props.unlink_memories(
+            source_memory_id="test-memory-id-1",
+            target_memory_id="test-memory-id-2",
+            relationship="related_to"
+        )
+        
+        assert result is True
+        
+        # Test with no relationship specified
+        result = props.unlink_memories(
+            source_memory_id="test-memory-id-1",
+            target_memory_id="test-memory-id-2"
+        )
+        
+        assert result is True
+    
+    def test_update_memory(self, props, mock_requests, mock_openai):
+        """Test updating a memory with versioning."""
+        # Mock getting the old memory
+        mock_requests.return_value.json.side_effect = [
+            {
+                "data": {
+                    "memories_by_pk": TEST_MEMORY
+                }
+            },
+            {
+                "data": {
+                    "insert_memories_one": {
+                        **TEST_MEMORY,
+                        "id": "test-memory-id-2",
+                        "content": "Updated content"
+                    }
+                }
+            },
+            {
+                "data": {
+                    "insert_memory_edges_one": {
+                        **TEST_MEMORY_EDGE,
+                        "relationship": "version_of"
+                    }
+                }
+            }
+        ]
+        
+        new_memory = props.update_memory(
+            memory_id="test-memory-id",
+            content="Updated content",
+            create_version_edge=True
+        )
+        
+        assert isinstance(new_memory, Memory)
+        assert new_memory.id == "test-memory-id-2"
+        assert new_memory.content == "Updated content"
+        
+        # Test without version edge
+        mock_requests.return_value.json.side_effect = [
+            {
+                "data": {
+                    "memories_by_pk": TEST_MEMORY
+                }
+            },
+            {
+                "data": {
+                    "insert_memories_one": {
+                        **TEST_MEMORY,
+                        "id": "test-memory-id-3",
+                        "content": "Updated content"
+                    }
+                }
+            }
+        ]
+        
+        new_memory = props.update_memory(
+            memory_id="test-memory-id",
+            content="Updated content",
+            create_version_edge=False
+        )
+        
+        assert isinstance(new_memory, Memory)
+        assert new_memory.id == "test-memory-id-3"
+    
+    def test_get_connected_memories(self, props, mock_requests):
+        """Test getting connected memories."""
+        mock_requests.return_value.json.return_value = {
+            "data": {
+                "get_connected_memories": [
+                    {
+                        "source_id": "test-memory-id-1",
+                        "target_id": "test-memory-id-2",
+                        "relationship": "related_to",
+                        "weight": 1.0,
+                        "depth": 1
+                    }
+                ]
+            }
+        }
+        
+        connections = props.get_connected_memories(
+            memory_id="test-memory-id-1",
+            relationship="related_to",
+            max_depth=2
+        )
+        
+        assert len(connections) == 1
+        assert connections[0]["source_id"] == "test-memory-id-1"
+        assert connections[0]["target_id"] == "test-memory-id-2"
+        assert connections[0]["relationship"] == "related_to"
+        assert connections[0]["weight"] == 1.0
+        assert connections[0]["depth"] == 1
 
 class TestErrorHandling:
     """Tests for error handling scenarios."""
