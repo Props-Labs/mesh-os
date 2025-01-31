@@ -86,7 +86,7 @@ def mock_requests():
         yield mock
 
 @pytest.fixture
-def props(mock_openai, mock_requests):
+def os(mock_openai, mock_requests):
     """Create a MeshOS instance with mocked dependencies."""
     return MeshOS(
         url="http://test-url",
@@ -109,13 +109,13 @@ def verify_graphql_query(mock_requests, expected_operation):
 class TestAgentManagement:
     """Tests for agent-related operations."""
     
-    def test_register_agent(self, props, mock_requests):
+    def test_register_agent(self, os, mock_requests):
         """Test registering a new agent."""
         setup_mock_response(mock_requests, {
             "insert_agents_one": TEST_AGENT
         })
         
-        agent = props.register_agent(
+        agent = os.register_agent(
             name=TEST_AGENT["name"],
             description=TEST_AGENT["description"],
             metadata=TEST_AGENT["metadata"]
@@ -129,25 +129,25 @@ class TestAgentManagement:
         # Verify GraphQL mutation
         verify_graphql_query(mock_requests, "mutation RegisterAgent")
     
-    def test_unregister_agent(self, props, mock_requests):
+    def test_unregister_agent(self, os, mock_requests):
         """Test unregistering an agent."""
         setup_mock_response(mock_requests, {
             "delete_agents_by_pk": {"id": TEST_AGENT["id"]}
         })
         
-        result = props.unregister_agent(TEST_AGENT["id"])
+        result = os.unregister_agent(TEST_AGENT["id"])
         assert result is True
         
         # Verify GraphQL mutation
         verify_graphql_query(mock_requests, "mutation UnregisterAgent")
     
-    def test_get_agent(self, props, mock_requests):
+    def test_get_agent(self, os, mock_requests):
         """Test retrieving agent details."""
         setup_mock_response(mock_requests, {
             "agents_by_pk": TEST_AGENT
         })
         
-        agent = props.get_agent(TEST_AGENT["id"])
+        agent = os.get_agent(TEST_AGENT["id"])
         assert isinstance(agent, Agent)
         assert agent.id == TEST_AGENT["id"]
         
@@ -157,13 +157,13 @@ class TestAgentManagement:
 class TestMemoryOperations:
     """Tests for memory-related operations."""
     
-    def test_remember(self, props, mock_requests, mock_openai):
+    def test_remember(self, os, mock_requests, mock_openai):
         """Test storing a new memory."""
         setup_mock_response(mock_requests, {
             "insert_memories_one": TEST_MEMORY
         })
         
-        memory = props.remember(
+        memory = os.remember(
             content=TEST_MEMORY["content"],
             agent_id=TEST_MEMORY["agent_id"],
             metadata=TEST_MEMORY["metadata"]
@@ -180,7 +180,7 @@ class TestMemoryOperations:
         # Verify GraphQL mutation
         verify_graphql_query(mock_requests, "mutation Remember")
     
-    def test_recall_with_filters(self, props, mock_requests, mock_openai):
+    def test_recall_with_filters(self, os, mock_requests, mock_openai):
         """Test searching memories with filters."""
         setup_mock_response(mock_requests, {
             "search_memories": [TEST_MEMORY]
@@ -193,7 +193,7 @@ class TestMemoryOperations:
             "tags": {"_contains": ["important"]}
         }
         
-        memories = props.recall(
+        memories = os.recall(
             query="test query",
             agent_id=TEST_MEMORY["agent_id"],
             limit=5,
@@ -215,13 +215,13 @@ class TestMemoryOperations:
         assert "where" in variables
         assert variables["where"].get("type") == {"_eq": "test"}
     
-    def test_forget(self, props, mock_requests):
+    def test_forget(self, os, mock_requests):
         """Test deleting a memory."""
         setup_mock_response(mock_requests, {
             "delete_memories_by_pk": {"id": TEST_MEMORY["id"]}
         })
         
-        result = props.forget(TEST_MEMORY["id"])
+        result = os.forget(TEST_MEMORY["id"])
         assert result is True
         
         # Verify GraphQL mutation
@@ -230,7 +230,7 @@ class TestMemoryOperations:
 class TestMemoryEdges:
     """Tests for memory edge operations."""
     
-    def test_link_memories(self, props, mock_requests):
+    def test_link_memories(self, os, mock_requests):
         """Test creating a link between memories."""
         mock_requests.return_value.json.return_value = {
             "data": {
@@ -238,7 +238,7 @@ class TestMemoryEdges:
             }
         }
         
-        edge = props.link_memories(
+        edge = os.link_memories(
             source_memory_id="test-memory-id-1",
             target_memory_id="test-memory-id-2",
             relationship="related_to"
@@ -251,7 +251,7 @@ class TestMemoryEdges:
         assert edge.relationship == TEST_MEMORY_EDGE["relationship"]
         assert edge.weight == TEST_MEMORY_EDGE["weight"]
     
-    def test_unlink_memories(self, props, mock_requests):
+    def test_unlink_memories(self, os, mock_requests):
         """Test removing links between memories."""
         mock_requests.return_value.json.return_value = {
             "data": {
@@ -261,7 +261,7 @@ class TestMemoryEdges:
             }
         }
         
-        result = props.unlink_memories(
+        result = os.unlink_memories(
             source_memory_id="test-memory-id-1",
             target_memory_id="test-memory-id-2",
             relationship="related_to"
@@ -270,14 +270,14 @@ class TestMemoryEdges:
         assert result is True
         
         # Test with no relationship specified
-        result = props.unlink_memories(
+        result = os.unlink_memories(
             source_memory_id="test-memory-id-1",
             target_memory_id="test-memory-id-2"
         )
         
         assert result is True
     
-    def test_update_memory(self, props, mock_requests, mock_openai):
+    def test_update_memory(self, os, mock_requests, mock_openai):
         """Test updating a memory with versioning."""
         # Mock getting the old memory
         mock_requests.return_value.json.side_effect = [
@@ -305,7 +305,7 @@ class TestMemoryEdges:
             }
         ]
         
-        new_memory = props.update_memory(
+        new_memory = os.update_memory(
             memory_id="test-memory-id",
             content="Updated content",
             create_version_edge=True
@@ -333,7 +333,7 @@ class TestMemoryEdges:
             }
         ]
         
-        new_memory = props.update_memory(
+        new_memory = os.update_memory(
             memory_id="test-memory-id",
             content="Updated content",
             create_version_edge=False
@@ -342,7 +342,7 @@ class TestMemoryEdges:
         assert isinstance(new_memory, Memory)
         assert new_memory.id == "test-memory-id-3"
     
-    def test_get_connected_memories(self, props, mock_requests):
+    def test_get_connected_memories(self, os, mock_requests):
         """Test getting connected memories."""
         mock_requests.return_value.json.return_value = {
             "data": {
@@ -358,7 +358,7 @@ class TestMemoryEdges:
             }
         }
         
-        connections = props.get_connected_memories(
+        connections = os.get_connected_memories(
             memory_id="test-memory-id-1",
             relationship="related_to",
             max_depth=2
@@ -379,13 +379,13 @@ class TestErrorHandling:
         mock_requests.return_value.status_code = 401
         mock_requests.return_value.raise_for_status.side_effect = Exception("Unauthorized")
         
-        props = MeshOS(
+        os = MeshOS(
             api_key="invalid",
             openai_api_key="test-key"  # Provide OpenAI key to avoid that error
         )
         
         with pytest.raises(Exception, match="Unauthorized"):
-            props.get_agent("any-id")
+            os.get_agent("any-id")
     
     def test_missing_openai_key(self):
         """Test handling of missing OpenAI key."""
@@ -393,21 +393,21 @@ class TestErrorHandling:
             with pytest.raises(ValueError, match="OpenAI API key is required"):
                 MeshOS(openai_api_key=None)
     
-    def test_failed_embedding(self, props, mock_openai):
+    def test_failed_embedding(self, os, mock_openai):
         """Test handling of OpenAI embedding failure."""
         mock_openai.side_effect = Exception("OpenAI API Error")
         
         with pytest.raises(Exception, match="OpenAI API Error"):
-            props.remember(
+            os.remember(
                 content="test content",
                 agent_id=TEST_AGENT["id"]  # Provide required agent_id
             )
     
-    def test_graphql_error(self, props, mock_requests):
+    def test_graphql_error(self, os, mock_requests):
         """Test handling of GraphQL errors."""
         mock_requests.return_value.json.return_value = {
             "errors": [{"message": "GraphQL Error"}]
         }
         
         with pytest.raises(GraphQLError, match="GraphQL Error"):
-            props.get_agent("any-id") 
+            os.get_agent("any-id") 

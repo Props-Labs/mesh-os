@@ -19,24 +19,24 @@ pip install mesh-os
 from mesh_os import MeshOS
 
 # Initialize client
-props = MeshOS(api_key="your-api-key")
+os = MeshOS(api_key="your-api-key")
 
 # Register an agent
-agent = props.register_agent(
+agent = os.register_agent(
     name="Assistant",
     description="A helpful AI assistant",
     metadata={"capabilities": ["chat", "research"]}
 )
 
 # Store a memory
-memory = props.remember(
+memory = os.remember(
     content="The user asked about Python programming",
     agent_id=agent.id,
     metadata={"type": "conversation"}
 )
 
 # Search memories
-memories = props.recall(
+memories = os.recall(
     query="What did the user ask about?",
     agent_id=agent.id
 )

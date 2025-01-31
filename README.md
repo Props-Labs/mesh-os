@@ -45,10 +45,10 @@ That's it! Your MeshOS instance is now running with:
 from mesh_os import MeshOS
 
 # Initialize the client
-props = MeshOS()
+os = MeshOS()
 
 # Register an agent
-agent = props.register_agent(
+agent = os.register_agent(
     name="research-assistant",
     description="AI research assistant",
     metadata={
@@ -58,7 +58,7 @@ agent = props.register_agent(
 )
 
 # Store memories
-memory = props.remember(
+memory = os.remember(
     content="The key insight from the paper is that transformer architectures...",
     agent_id=agent.id,
     metadata={
@@ -70,7 +70,7 @@ memory = props.remember(
 )
 
 # Search memories with advanced filters
-memories = props.recall(
+memories = os.recall(
     query="What were the key insights about transformers?",
     agent_id=agent.id,  # Optional: filter by agent
     limit=5,
@@ -94,10 +94,10 @@ memories = props.recall(
 )
 
 # Delete a specific memory
-props.forget(memory.id)
+os.forget(memory.id)
 
 # Unregister an agent (and all their memories)
-props.unregister_agent(agent.id)
+os.unregister_agent(agent.id)
 ```
 
 ## CLI Usage
