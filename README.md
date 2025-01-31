@@ -1,6 +1,6 @@
 # MeshOS
 
-A lightweight multi-agent memory system with vector search capabilities, built on PostgreSQL and Hasura.
+A lightweight multi-agent memory system for business. Complete with vector search capabilities, built on PostgreSQL and Hasura.
 
 ## Features
 
