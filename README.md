@@ -7,6 +7,8 @@ A lightweight multi-agent memory system with vector search capabilities, built o
 - 🤖 Multi-agent system with lifecycle management
 - 🧠 Vector-based memory storage using pgvector
 - 🔍 Semantic search with advanced filtering
+- 🌳 Rich taxonomy system for memory classification
+- 🔗 Memory linking with relationship types
 - 🚀 GraphQL API powered by Hasura
 - 🛠️ Easy-to-use CLI
 - 📚 Python SDK for seamless integration
@@ -43,6 +45,7 @@ That's it! Your MeshOS instance is now running with:
 
 ```python
 from mesh_os import MeshOS
+from mesh_os.core.taxonomy import DataType, KnowledgeSubtype
 
 # Initialize the client
 os = MeshOS()
@@ -57,16 +60,25 @@ agent = os.register_agent(
     }
 )
 
-# Store memories
+# Store memories with taxonomy
 memory = os.remember(
     content="The key insight from the paper is that transformer architectures...",
     agent_id=agent.id,
     metadata={
-        "type": "research_note",
+        "type": DataType.KNOWLEDGE,
+        "subtype": KnowledgeSubtype.RESEARCH_PAPER,
         "source": "arxiv:2312.12345",
         "confidence": 0.95,
         "tags": ["paper", "transformers", "important"]
     }
+)
+
+# Link related memories
+os.link_memories(
+    source_id=memory.id,
+    target_id=other_memory.id,
+    relationship="related_to",
+    weight=0.8
 )
 
 # Search memories with advanced filters
@@ -76,8 +88,9 @@ memories = os.recall(
     limit=5,
     threshold=0.7,  # Similarity threshold
     filters={
-        # Simple equality filter
-        "type": "research_note",
+        # Filter by taxonomy
+        "type": DataType.KNOWLEDGE,
+        "subtype": KnowledgeSubtype.RESEARCH_PAPER,
         
         # Numeric comparisons
         "confidence": {"_gt": 0.8},
@@ -113,21 +126,77 @@ mesh-os agent unregister <agent-id>
 # Memory Management
 mesh-os memory remember "Important insight..." \
     --agent-id <agent-id> \
-    --metadata '{"type": "note", "tags": ["important"]}'
+    --metadata '{
+        "type": "knowledge",
+        "subtype": "research_paper",
+        "tags": ["important"]
+    }'
+
+# Memory Linking
+mesh-os memory link <source-id> <target-id> \
+    --relationship "related_to" \
+    --weight 0.8
+
+mesh-os memory unlink <source-id> <target-id> \
+    --relationship "related_to"
 
 # Search with filters
 mesh-os memory recall "What do you know?" \
     --agent-id <agent-id> \
     --limit 5 \
     --threshold 0.7 \
-    --filter type=research_note \
+    --filter type=knowledge \
+    --filter subtype=research_paper \
     --filter 'confidence._gt=0.8' \
     --filter 'created_at._gte=2024-01-01' \
     --filter 'tags._contains=["important"]' \
     --filter 'metadata._contains={"source":"arxiv"}'
 
 mesh-os memory forget <memory-id>
+
+# View Memory Connections
+mesh-os memory connections <memory-id> \
+    --relationship "related_to" \
+    --depth 2
 ```
+
+## Memory Taxonomy
+
+MeshOS uses a rich taxonomy system to classify memories:
+
+### Data Types
+- `KNOWLEDGE`: Facts, concepts, and information
+- `ACTIVITY`: Actions, events, and behaviors
+- `DECISION`: Choices, reasoning, and outcomes
+- `MEDIA`: Images, audio, and other media
+
+### Subtypes
+Each data type has specific subtypes:
+
+**Knowledge**
+- `DATASET`: Structured data collections
+- `RESEARCH_PAPER`: Academic papers and findings
+- `CONCEPT`: Abstract ideas and theories
+- `FACT`: Verified information
+- `OBSERVATION`: Direct observations
+
+**Activity**
+- `USER_INTERACTION`: Conversations and exchanges
+- `SYSTEM_EVENT`: Internal system events
+- `TASK`: Specific actions or jobs
+- `PROCESS`: Multi-step procedures
+
+**Decision**
+- `REASONING`: Logic and rationale
+- `OUTCOME`: Results and consequences
+- `PLAN`: Future actions
+- `EVALUATION`: Assessments and judgments
+
+**Media**
+- `IMAGE`: Visual content
+- `AUDIO`: Sound recordings
+- `VIDEO`: Motion pictures
+- `DOCUMENT`: Rich text and files
 
 ## Configuration
 
