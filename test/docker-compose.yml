@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: mesh_os_postgres
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mysecretpassword}
+      POSTGRES_DB: mesh_os
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command: >
+      bash -c "
+        echo 'Creating extensions...' &&
+        docker-entrypoint.sh postgres &
+        until pg_isready -U postgres; do sleep 1; done &&
+        psql -U postgres -d mesh_os -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"; CREATE EXTENSION IF NOT EXISTS vector;' &&
+        wait
+      "
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  hasura:
+    image: hasura/graphql-engine:v2.33.4
+    container_name: mesh_os_hasura
+    ports:
+      - "${HASURA_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/mesh_os
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_ADMIN_SECRET:-meshos}
+      HASURA_GRAPHQL_ENABLE_CONSOLE: ${HASURA_ENABLE_CONSOLE:-true}
+      HASURA_GRAPHQL_CONSOLE_ASSETS_DIR: /srv/console-assets
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+      HASURA_GRAPHQL_CORS_DOMAIN: "*"
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/mesh_os
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  postgres_data: 

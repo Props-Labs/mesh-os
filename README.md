@@ -1,4 +1,4 @@
-# PropsOS
+# MeshOS
 
 A lightweight multi-agent memory system with vector search capabilities, built on PostgreSQL and Hasura.
 
@@ -15,12 +15,12 @@ A lightweight multi-agent memory system with vector search capabilities, built o
 
 1. Install the package:
 ```bash
-pip install props-os
+pip install mesh-os
 ```
 
 2. Create a new project:
 ```bash
-props-os create my-os
+mesh-os create my-os
 cd my-os
 ```
 
@@ -31,10 +31,10 @@ OPENAI_API_KEY=your_api_key_here
 
 4. Start the services:
 ```bash
-props-os up
+mesh-os up
 ```
 
-That's it! Your PropsOS instance is now running with:
+That's it! Your MeshOS instance is now running with:
 - PostgreSQL with pgvector at `localhost:5432`
 - Hasura GraphQL API at `http://localhost:8080/v1/graphql`
 - Hasura Console at `http://localhost:8080/console`
@@ -42,10 +42,10 @@ That's it! Your PropsOS instance is now running with:
 ## Python SDK Usage
 
 ```python
-from props_os import PropsOS
+from mesh_os import MeshOS
 
 # Initialize the client
-props = PropsOS()
+props = MeshOS()
 
 # Register an agent
 agent = props.register_agent(
@@ -104,19 +104,19 @@ props.unregister_agent(agent.id)
 
 ```bash
 # Agent Management
-props-os agent register "assistant" \
+mesh-os agent register "assistant" \
     --description "Research assistant" \
     --metadata '{"model": "gpt-4"}'
 
-props-os agent unregister <agent-id>
+mesh-os agent unregister <agent-id>
 
 # Memory Management
-props-os memory remember "Important insight..." \
+mesh-os memory remember "Important insight..." \
     --agent-id <agent-id> \
     --metadata '{"type": "note", "tags": ["important"]}'
 
 # Search with filters
-props-os memory recall "What do you know?" \
+mesh-os memory recall "What do you know?" \
     --agent-id <agent-id> \
     --limit 5 \
     --threshold 0.7 \
@@ -126,7 +126,7 @@ props-os memory recall "What do you know?" \
     --filter 'tags._contains=["important"]' \
     --filter 'metadata._contains={"source":"arxiv"}'
 
-props-os memory forget <memory-id>
+mesh-os memory forget <memory-id>
 ```
 
 ## Configuration
@@ -139,7 +139,7 @@ OPENAI_API_KEY=your_api_key_here
 
 # Optional (defaults shown)
 POSTGRES_PASSWORD=mysecretpassword
-HASURA_ADMIN_SECRET=myhasurasecret
+HASURA_ADMIN_SECRET=meshos
 POSTGRES_PORT=5432
 HASURA_PORT=8080
 HASURA_ENABLE_CONSOLE=true
@@ -147,7 +147,7 @@ HASURA_ENABLE_CONSOLE=true
 
 ## Architecture
 
-PropsOS is built on:
+MeshOS is built on:
 - **PostgreSQL + pgvector**: For persistent storage and vector similarity search
 - **Hasura**: For the GraphQL API and real-time subscriptions
 - **OpenAI**: For generating embeddings (using `text-embedding-3-small`)
@@ -157,8 +157,8 @@ PropsOS is built on:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/props-os.git
-cd props-os
+git clone https://github.com/yourusername/mesh-os.git
+cd mesh-os
 ```
 
 2. Install dependencies:

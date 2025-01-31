@@ -9,13 +9,13 @@ fi
 # Install the package in development mode
 poetry install
 
-# Create symlink to make props-os command available
+# Create symlink to make mesh-os command available
 mkdir -p ~/.local/bin
 poetry run pip install --editable .
 
-echo "PropsOS installed successfully!"
+echo "MeshOS installed successfully!"
 echo ""
 echo "You can now use the following commands:"
-echo "  props-os create my-os    # Create a new PropsOS project"
-echo "  props-os up             # Start services"
-echo "  props-os down           # Stop services" 
+echo "  mesh-os create my-os    # Create a new MeshOS project"
+echo "  mesh-os up             # Start services"
+echo "  mesh-os down           # Stop services" 

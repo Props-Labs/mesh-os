@@ -1,0 +1,9 @@
+version: 3
+endpoint: http://hasura:8080
+admin_secret: meshos
+metadata_directory: metadata
+migrations_directory: migrations
+seeds_directory: seeds
+actions:
+  kind: synchronous
+  handler_webhook_baseurl: http://localhost:3000 

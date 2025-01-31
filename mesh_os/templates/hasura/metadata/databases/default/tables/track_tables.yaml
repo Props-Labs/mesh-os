@@ -1,0 +1,14 @@
+- table:
+    schema: public
+    name: agents
+  is_enum: false
+
+- table:
+    schema: public
+    name: memories
+  is_enum: false
+
+- table:
+    schema: public
+    name: memory_edges
+  is_enum: false 
