@@ -1,5 +1,5 @@
 """
-Taxonomy and classification models for PropsOS.
+Taxonomy and classification models for MeshOS.
 """
 from datetime import datetime
 from enum import Enum
@@ -77,7 +77,7 @@ class MemoryMetadata(BaseModel):
     Standardized metadata structure for memories.
     
     This model enforces the taxonomy and classification guidelines
-    for all memories stored in PropsOS.
+    for all memories stored in MeshOS.
     
     Examples:
         # Log an agent conversation

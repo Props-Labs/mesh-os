@@ -1,5 +1,5 @@
 """
-Core functionality for PropsOS.
+Core functionality for MeshOS.
 """
 import json
 import os
@@ -12,7 +12,7 @@ import requests
 from rich.console import Console
 from rich.panel import Panel
 
-from props_os.core.taxonomy import (DataType, EdgeMetadata, EdgeType, MemoryMetadata,
+from mesh_os.core.taxonomy import (DataType, EdgeMetadata, EdgeType, MemoryMetadata,
                                   RelevanceTag, VersionInfo, KnowledgeSubtype)
 
 console = Console()
@@ -52,16 +52,16 @@ class GraphQLError(Exception):
     """Raised when a GraphQL query fails."""
     pass
 
-class PropsOS:
-    """PropsOS client for interacting with the system."""
+class MeshOS:
+    """MeshOS client for interacting with the system."""
     
     def __init__(
         self,
         url: str = "http://localhost:8080",
-        api_key: str = "myhasurasecret",
+        api_key: str = "meshos",
         openai_api_key: Optional[str] = None
     ):
-        """Initialize the PropsOS client."""
+        """Initialize the MeshOS client."""
         self.url = f"{url}/v1/graphql"
         self.headers = {
             "Content-Type": "application/json",

@@ -1,9 +1,9 @@
 """
-Core functionality for PropsOS.
+Core functionality for MeshOS.
 """
 
-from props_os.core.client import Agent, Memory, MemoryEdge, PropsOS
-from props_os.core.taxonomy import (ActivitySubtype, DataType, DecisionSubtype,
+from mesh_os.core.client import Agent, Memory, MemoryEdge, MeshOS
+from mesh_os.core.taxonomy import (ActivitySubtype, DataType, DecisionSubtype,
                                   EdgeMetadata, EdgeType, KnowledgeSubtype,
                                   MediaSubtype, MemoryMetadata, RelevanceTag,
                                   VersionInfo)
@@ -13,7 +13,7 @@ __all__ = [
     "Agent",
     "Memory",
     "MemoryEdge",
-    "PropsOS",
+    "MeshOS",
     
     # Taxonomy models
     "DataType",

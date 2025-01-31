@@ -1,5 +1,5 @@
 """
-Tests for the PropsOS SDK.
+Tests for the MeshOS SDK.
 """
 import json
 import os
@@ -10,9 +10,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from openai import OpenAI
 
-from props_os import PropsOS
-from props_os.core.client import Agent, GraphQLError, Memory, MemoryEdge
-from props_os.core.taxonomy import DataType, EdgeType, MemoryMetadata, EdgeMetadata
+from mesh_os import MeshOS
+from mesh_os.core.client import Agent, GraphQLError, Memory, MemoryEdge
+from mesh_os.core.taxonomy import DataType, EdgeType, MemoryMetadata, EdgeMetadata
 
 # Test data
 TEST_AGENT = {
@@ -87,8 +87,8 @@ def mock_requests():
 
 @pytest.fixture
 def props(mock_openai, mock_requests):
-    """Create a PropsOS instance with mocked dependencies."""
-    return PropsOS(
+    """Create a MeshOS instance with mocked dependencies."""
+    return MeshOS(
         url="http://test-url",
         api_key="test-secret",
         openai_api_key="test-openai-key"
@@ -379,7 +379,7 @@ class TestErrorHandling:
         mock_requests.return_value.status_code = 401
         mock_requests.return_value.raise_for_status.side_effect = Exception("Unauthorized")
         
-        props = PropsOS(
+        props = MeshOS(
             api_key="invalid",
             openai_api_key="test-key"  # Provide OpenAI key to avoid that error
         )
@@ -391,7 +391,7 @@ class TestErrorHandling:
         """Test handling of missing OpenAI key."""
         with patch.dict(os.environ, {}, clear=True):  # Clear env vars
             with pytest.raises(ValueError, match="OpenAI API key is required"):
-                PropsOS(openai_api_key=None)
+                MeshOS(openai_api_key=None)
     
     def test_failed_embedding(self, props, mock_openai):
         """Test handling of OpenAI embedding failure."""

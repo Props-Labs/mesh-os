@@ -1,5 +1,5 @@
 """
-CLI interface for PropsOS.
+CLI interface for MeshOS.
 """
 import os
 import shutil
@@ -17,8 +17,8 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich import print as rprint
 
-from props_os.core.client import PropsOS
-from props_os.core.taxonomy import (
+from mesh_os.core.client import MeshOS
+from mesh_os.core.taxonomy import (
     DataType, EdgeType, MemoryMetadata, EdgeMetadata,
     ActivitySubtype, KnowledgeSubtype, DecisionSubtype, MediaSubtype
 )
@@ -95,12 +95,12 @@ def load_env():
     return False
 
 def get_client():
-    """Get a configured PropsOS client."""
+    """Get a configured MeshOS client."""
     # Try to load environment from current directory
     load_env()
     
     hasura_url = os.getenv("HASURA_URL", "http://localhost:8080/v1/graphql")
-    hasura_admin_secret = os.getenv("HASURA_ADMIN_SECRET", "myhasurasecret")
+    hasura_admin_secret = os.getenv("HASURA_ADMIN_SECRET", "meshos")
     openai_api_key = os.getenv("OPENAI_API_KEY")
     
     if not openai_api_key:
@@ -110,7 +110,7 @@ def get_client():
         load_env()
         openai_api_key = os.getenv("OPENAI_API_KEY")
     
-    return PropsOS(
+    return MeshOS(
         url=hasura_url,
         api_key=hasura_admin_secret,
         openai_api_key=openai_api_key
@@ -123,7 +123,7 @@ def setup_openai_key(env_file: Path) -> bool:
     """
     console.print(Panel(
         "[yellow]⚠️  OpenAI API key required[/]\n\n"
-        "PropsOS uses OpenAI's API for generating embeddings.\n"
+        "MeshOS uses OpenAI's API for generating embeddings.\n"
         "You can get an API key at: [blue]https://platform.openai.com/api-keys[/]",
         title="API Key Setup",
         border_style="yellow"
@@ -157,7 +157,7 @@ def setup_openai_key(env_file: Path) -> bool:
         return True
     
     console.print(
-        "\n[yellow]Note:[/] You'll need to set OPENAI_API_KEY in your .env file before using PropsOS"
+        "\n[yellow]Note:[/] You'll need to set OPENAI_API_KEY in your .env file before using MeshOS"
     )
     return False
 
@@ -167,7 +167,7 @@ TEMPLATES_DIR = PACKAGE_ROOT / "templates"
 
 @click.group()
 def cli():
-    """PropsOS CLI - Manage your agent memory system."""
+    """MeshOS CLI - Manage your agent memory system."""
     pass
 
 @cli.group()
@@ -317,8 +317,8 @@ def unlink(source_id: str, target_id: str, relationship: Optional[str] = None):
     Remove links between two memories.
     
     Examples:
-        props-os memory unlink memory-id-1 memory-id-2
-        props-os memory unlink memory-id-1 memory-id-2 -r related_to
+        mesh-os memory unlink memory-id-1 memory-id-2
+        mesh-os memory unlink memory-id-1 memory-id-2 -r related_to
     """
     try:
         client = get_client()
@@ -339,9 +339,9 @@ def update(memory_id: str, content: str, metadata: Optional[str] = None, no_vers
     Update a memory's content and optionally create a version link.
     
     Examples:
-        props-os memory update memory-id "Updated content"
-        props-os memory update memory-id "Updated content" -m '{"confidence": 0.9}'
-        props-os memory update memory-id "Updated content" --no-version
+        mesh-os memory update memory-id "Updated content"
+        mesh-os memory update memory-id "Updated content" -m '{"confidence": 0.9}'
+        mesh-os memory update memory-id "Updated content" --no-version
     """
     try:
         client = get_client()
@@ -365,9 +365,9 @@ def connections(memory_id: str, relationship: Optional[str] = None, depth: int =
     View memories connected to the given memory.
     
     Examples:
-        props-os memory connections memory-id
-        props-os memory connections memory-id -r version_of
-        props-os memory connections memory-id -d 2
+        mesh-os memory connections memory-id
+        mesh-os memory connections memory-id -r version_of
+        mesh-os memory connections memory-id -d 2
     """
     try:
         client = get_client()
@@ -394,7 +394,7 @@ def connections(memory_id: str, relationship: Optional[str] = None, depth: int =
 @cli.command()
 @click.argument("project_name")
 def create(project_name: str):
-    """Create a new PropsOS project."""
+    """Create a new MeshOS project."""
     project_dir = Path.cwd() / project_name
     
     if project_dir.exists():
@@ -408,7 +408,7 @@ def create(project_name: str):
         "• PostgreSQL with pgvector for semantic search\n"
         "• Hasura GraphQL API\n"
         "• Example code and configuration",
-        title="PropsOS Setup",
+        title="MeshOS Setup",
         border_style="blue"
     ))
     
@@ -439,7 +439,7 @@ def create(project_name: str):
     console.print(Panel(
         "Next steps:\n\n"
         f"1. [green]cd {project_name}[/]\n"
-        "2. [green]props-os up[/] to start the services"
+        "2. [green]mesh-os up[/] to start the services"
         + ("" if has_api_key else "\n3. Add your [yellow]OPENAI_API_KEY[/] to [blue].env[/]"),
         title="Project Created",
         border_style="green"
@@ -447,9 +447,9 @@ def create(project_name: str):
 
 @cli.command()
 def up():
-    """Start PropsOS services."""
+    """Start MeshOS services."""
     if not Path("docker-compose.yml").exists():
-        console.print("[red]Error:[/] docker-compose.yml not found. Are you in a PropsOS project directory?")
+        console.print("[red]Error:[/] docker-compose.yml not found. Are you in a MeshOS project directory?")
         return
     
     # Load environment from current directory
@@ -461,7 +461,7 @@ def up():
             console.print("\n[red]Error:[/] OpenAI API key is required to start services")
             return
     
-    with console.status("[bold]Starting PropsOS services...", spinner="dots"):
+    with console.status("[bold]Starting MeshOS services...", spinner="dots"):
         # First, ensure everything is stopped and volumes are clean
         subprocess.run(["docker", "compose", "down", "-v"], capture_output=True)
         
@@ -530,7 +530,7 @@ def up():
             try:
                 result = subprocess.run(
                     ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", 
-                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'myhasurasecret')}", 
+                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'meshos')}", 
                      "http://localhost:8080/healthz"],
                     capture_output=True,
                     text=True
@@ -557,7 +557,7 @@ def up():
             if migration_file.exists():
                 # First create the hdb_catalog schema if it doesn't exist
                 subprocess.run(
-                    ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "props_os", "-c", 
+                    ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c", 
                      "CREATE SCHEMA IF NOT EXISTS hdb_catalog;"],
                     check=True,
                     capture_output=True  # Capture output to prevent noise
@@ -565,7 +565,7 @@ def up():
                 
                 # Then run the migrations by passing the file directly
                 result = subprocess.run(
-                    f"cat {migration_file} | docker compose exec -T postgres psql -U postgres -d props_os",
+                    f"cat {migration_file} | docker compose exec -T postgres psql -U postgres -d mesh_os",
                     shell=True,
                     capture_output=True,
                     text=True
@@ -590,7 +590,7 @@ def up():
                 result = subprocess.run(
                     ["curl", "-s", "-X", "POST", 
                      "-H", "Content-Type: application/json",
-                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'myhasurasecret')}",
+                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'meshos')}",
                      "-d", '{"type":"clear_metadata","args":{}}',
                      "http://localhost:8080/v1/metadata"],
                     capture_output=True,
@@ -620,7 +620,7 @@ def up():
                 result = subprocess.run(
                     ["curl", "-s", "-X", "POST",
                      "-H", "Content-Type: application/json",
-                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'myhasurasecret')}",
+                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'meshos')}",
                      "-d", json.dumps(source_payload),
                      "http://localhost:8080/v1/metadata"],
                     capture_output=True,
@@ -774,7 +774,7 @@ def up():
                 result = subprocess.run(
                     ["curl", "-s", "-X", "POST",
                      "-H", "Content-Type: application/json",
-                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'myhasurasecret')}",
+                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'meshos')}",
                      "-d", json.dumps(track_tables_payload),
                      "http://localhost:8080/v1/metadata"],
                     capture_output=True,
@@ -796,7 +796,7 @@ def up():
                 result = subprocess.run(
                     ["curl", "-s", "-X", "POST",
                      "-H", "Content-Type: application/json",
-                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'myhasurasecret')}",
+                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'meshos')}",
                      "-d", '{"type":"reload_metadata","args":{"reload_remote_schemas":true}}',
                      "http://localhost:8080/v1/metadata"],
                     capture_output=True,
@@ -830,12 +830,12 @@ def up():
 
 @cli.command()
 def down():
-    """Stop PropsOS services."""
+    """Stop MeshOS services."""
     if not Path("docker-compose.yml").exists():
-        console.print("[red]Error:[/] docker-compose.yml not found. Are you in a PropsOS project directory?")
+        console.print("[red]Error:[/] docker-compose.yml not found. Are you in a MeshOS project directory?")
         return
     
-    with console.status("[bold]Stopping PropsOS services...", spinner="dots"):
+    with console.status("[bold]Stopping MeshOS services...", spinner="dots"):
         subprocess.run(["docker", "compose", "down"], capture_output=True)
     console.print("[green]✓[/] Services stopped successfully")
 

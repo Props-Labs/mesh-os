@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "props-os"
+name = "mesh-os"
 version = "0.1.0"
-description = "PropsOS - A lightweight multi-agent memory system with semantic search"
+description = "MeshOS - A lightweight multi-agent memory system with semantic search"
 authors = ["Calvin Hoenes <calvin@props.app>"]
 readme = "README.md"
-packages = [{include = "props_os"}]
-repository = "https://github.com/Props-Labs/props-os"
+packages = [{include = "mesh_os"}]
+repository = "https://github.com/Props-Labs/mesh-os"
 keywords = ["ai", "agents", "memory", "semantic-search", "vector-database"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -36,7 +36,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-props-os = "props_os.cli.main:cli"
+mesh-os = "mesh_os.cli.main:cli"
 
 [tool.black]
 line-length = 88

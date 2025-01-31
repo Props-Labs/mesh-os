@@ -1,6 +1,6 @@
-# PropsOS v0.1.0 - Initial Release
+# MeshOS v0.1.0 - Initial Release
 
-PropsOS is a lightweight multi-agent memory system with semantic search capabilities.
+MeshOS is a lightweight multi-agent memory system with semantic search capabilities.
 
 ## Features
 - 🤖 Agent Management (register/unregister agents)
@@ -11,15 +11,15 @@ PropsOS is a lightweight multi-agent memory system with semantic search capabili
 
 ## Installation
 ```bash
-pip install props-os
+pip install mesh-os
 ```
 
 ## Quick Start
 ```python
-from props_os import PropsOS
+from mesh_os import MeshOS
 
 # Initialize client
-props = PropsOS(api_key="your-api-key")
+props = MeshOS(api_key="your-api-key")
 
 # Register an agent
 agent = props.register_agent(
@@ -48,4 +48,4 @@ memories = props.recall(
 - Docker (for local development)
 
 ## Documentation
-See the [README.md](https://github.com/Props-Labs/props-os/blob/main/README.md) for full documentation. 
+See the [README.md](https://github.com/Props-Labs/mesh-os/blob/main/README.md) for full documentation. 

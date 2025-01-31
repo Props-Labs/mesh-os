@@ -1,17 +1,17 @@
 services:
   postgres:
     image: pgvector/pgvector:pg15
-    container_name: props_os_postgres
+    container_name: mesh_os_postgres
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mysecretpassword}
-      POSTGRES_DB: props_os
+      POSTGRES_DB: mesh_os
       POSTGRES_INITDB_ARGS: "--data-checksums"
     command: >
       bash -c "
         echo 'Creating extensions...' &&
         docker-entrypoint.sh postgres &
         until pg_isready -U postgres; do sleep 1; done &&
-        psql -U postgres -d props_os -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"; CREATE EXTENSION IF NOT EXISTS vector;' &&
+        psql -U postgres -d mesh_os -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"; CREATE EXTENSION IF NOT EXISTS vector;' &&
         wait
       "
     ports:
@@ -28,21 +28,21 @@ services:
 
   hasura:
     image: hasura/graphql-engine:v2.33.4
-    container_name: props_os_hasura
+    container_name: mesh_os_hasura
     ports:
       - "${HASURA_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      HASURA_GRAPHQL_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/props_os
-      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_ADMIN_SECRET:-myhasurasecret}
+      HASURA_GRAPHQL_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/mesh_os
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_ADMIN_SECRET:-meshos}
       HASURA_GRAPHQL_ENABLE_CONSOLE: ${HASURA_ENABLE_CONSOLE:-true}
       HASURA_GRAPHQL_CONSOLE_ASSETS_DIR: /srv/console-assets
       HASURA_GRAPHQL_DEV_MODE: "true"
       HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
       HASURA_GRAPHQL_CORS_DOMAIN: "*"
-      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/props_os
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/mesh_os
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:8080/healthz"]
       interval: 15s

@@ -1,10 +1,10 @@
 """
-Simple example demonstrating PropsOS usage.
+Example usage of MeshOS.
 """
 import os
 from dotenv import load_dotenv
 
-from props_os.core.client import PropsOS
+from mesh_os.core.client import MeshOS
 
 # Load environment variables
 load_dotenv()
@@ -12,9 +12,10 @@ load_dotenv()
 def main():
     """Run the example."""
     # Initialize client
-    client = PropsOS(
+    client = MeshOS(
         url=os.getenv("HASURA_URL", "http://localhost:8080"),
-        api_key=os.getenv("HASURA_ADMIN_SECRET", "myhasurasecret")
+        api_key=os.getenv("HASURA_ADMIN_SECRET", "meshos"),
+        openai_api_key=os.getenv("OPENAI_API_KEY")
     )
     
     try:
@@ -36,7 +37,7 @@ def main():
         ]
         
         for text in memories:
-            memory = client.remember(text, agent_id=agent.id)
+            memory = client.remember(text, agent_id=agent.id, metadata={"source": "example"})
             print(f"Stored memory: {memory.id}")
         
         # Search for similar memories

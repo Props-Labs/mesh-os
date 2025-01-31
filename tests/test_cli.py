@@ -1,5 +1,5 @@
 """
-Tests for the PropsOS CLI.
+Tests for the MeshOS CLI.
 """
 import json
 import uuid
@@ -11,8 +11,8 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from props_os.cli.main import cli, validate_uuid, validate_metadata, validate_memory_metadata
-from props_os.core.taxonomy import DataType, EdgeType, KnowledgeSubtype
+from mesh_os.cli.main import cli, validate_uuid, validate_metadata, validate_memory_metadata
+from mesh_os.core.taxonomy import DataType, EdgeType, KnowledgeSubtype
 
 # Test data with fixed UUIDs for consistency
 TEST_AGENT = {
@@ -60,8 +60,8 @@ def runner():
 
 @pytest.fixture
 def mock_client():
-    """Mock the PropsOS client."""
-    with patch("props_os.cli.main.get_client") as mock:
+    """Mock the MeshOS client."""
+    with patch("mesh_os.cli.main.get_client") as mock:
         yield mock.return_value
 
 @pytest.fixture(autouse=True)
