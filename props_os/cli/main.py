@@ -106,35 +106,31 @@ def cli():
 
 @cli.group()
 def agent():
-    """Manage agents in the system."""
+    """Manage agents."""
     pass
 
-@agent.command("register")
+@agent.command()
 @click.argument("name")
 @click.option("--description", "-d", help="Agent description")
-@click.option("--status", default="active", help="Initial agent status")
-@click.option("--metadata", help="JSON string of agent metadata")
-def register_agent(name: str, description: Optional[str], status: str, metadata: Optional[str]):
-    """Register a new agent in the system."""
+@click.option("--metadata", "-m", help="Agent metadata as JSON")
+def register(name: str, description: Optional[str] = None, metadata: Optional[str] = None):
+    """Register a new agent."""
     try:
         client = get_client()
-        agent = client.create_agent(
-            name=name,
-            description=description,
-            metadata=eval(metadata) if metadata else None
-        )
-        console.print(f"[green]✓[/] Agent registered successfully. ID: {agent.id}")
+        metadata_dict = json.loads(metadata) if metadata else None
+        agent = client.register_agent(name, description, metadata_dict)
+        console.print(f"[green]✓[/] Agent registered with ID: {agent.id}")
     except Exception as e:
         console.print(f"[red]Error:[/] {str(e)}")
 
-@agent.command("deregister")
+@agent.command()
 @click.argument("agent_id")
-def deregister_agent(agent_id: str):
-    """Remove an agent from the system."""
+def unregister(agent_id: str):
+    """Unregister an agent."""
     try:
         client = get_client()
-        if client.delete_agent(agent_id):
-            console.print(f"[green]✓[/] Agent {agent_id} deregistered successfully")
+        if client.unregister_agent(agent_id):
+            console.print(f"[green]✓[/] Agent {agent_id} unregistered")
         else:
             console.print(f"[red]Error:[/] Agent {agent_id} not found")
     except Exception as e:
@@ -142,58 +138,97 @@ def deregister_agent(agent_id: str):
 
 @cli.group()
 def memory():
-    """Manage memories in the system."""
+    """Manage memories."""
     pass
 
-@memory.command("add")
+@memory.command()
 @click.argument("content")
-@click.option("--agent-id", "-a", help="Associated agent ID")
-@click.option("--metadata", "-m", help="JSON string of memory metadata")
-def add_memory(content: str, agent_id: Optional[str], metadata: Optional[str]):
-    """Add a new memory to the system."""
+@click.option("--agent-id", "-a", help="Agent ID to associate with the memory")
+@click.option("--metadata", "-m", help="Memory metadata as JSON")
+def remember(content: str, agent_id: Optional[str] = None, metadata: Optional[str] = None):
+    """Store a new memory."""
     try:
         client = get_client()
-        memory = client.remember(
-            content=content,
-            agent_id=agent_id,
-            metadata=eval(metadata) if metadata else None
-        )
-        console.print(f"[green]✓[/] Memory added successfully. ID: {memory.id}")
+        metadata_dict = json.loads(metadata) if metadata else None
+        memory = client.remember(content, agent_id, metadata_dict)
+        console.print(f"[green]✓[/] Memory stored with ID: {memory.id}")
     except Exception as e:
         console.print(f"[red]Error:[/] {str(e)}")
 
-@memory.command("search")
+@memory.command()
 @click.argument("query")
-@click.option("--agent-id", "-a", help="Filter by agent ID")
+@click.option("--agent-id", "-a", help="Filter memories by agent ID")
 @click.option("--limit", "-l", default=5, help="Maximum number of results")
-def search_memories(query: str, agent_id: Optional[str], limit: int):
-    """Search memories by semantic similarity."""
+@click.option("--threshold", "-t", default=0.7, help="Similarity threshold (0-1)")
+@click.option("--filter", "-f", multiple=True, help="Add metadata filters in format key=value or key.operator=value (e.g., type=note or confidence._gt=0.8)")
+def recall(query: str, agent_id: Optional[str] = None, limit: int = 5, threshold: float = 0.7, filter: tuple = ()):
+    """
+    Search for similar memories with optional filters.
+    
+    Examples:
+        props-os memory recall "What do you know about me?" -f type=note
+        props-os memory recall "Important insights" -f confidence._gt=0.8 -f tags._contains=["important"]
+        props-os memory recall "Recent updates" -f created_at._gte=2024-01-01
+    """
     try:
         client = get_client()
-        memories = client.recall(
-            query=query,
-            agent_id=agent_id,
-            limit=limit
-        )
-        console.print(f"\nFound {len(memories)} memories:")
-        for i, memory in enumerate(memories, 1):
+        
+        # Parse filters
+        filters = {}
+        for f in filter:
+            if "=" not in f:
+                console.print(f"[red]Error:[/] Invalid filter format: {f}")
+                return
+                
+            key, value = f.split("=", 1)
+            
+            # Handle complex filters with operators
+            if "._" in key:
+                base_key, operator = key.split("._", 1)
+                try:
+                    # Try to parse as JSON for arrays and objects
+                    parsed_value = json.loads(value)
+                except json.JSONDecodeError:
+                    # If not JSON, use as string
+                    parsed_value = value
+                filters[base_key] = {f"_{operator}": parsed_value}
+            else:
+                try:
+                    # Try to parse as JSON for arrays and objects
+                    parsed_value = json.loads(value)
+                except json.JSONDecodeError:
+                    # If not JSON, use as string
+                    parsed_value = value
+                filters[key] = parsed_value
+        
+        memories = client.recall(query, agent_id, limit, threshold, filters)
+        if not memories:
+            console.print("[yellow]No matching memories found[/]")
+            return
+        
+        console.print(f"\n[green]Found {len(memories)} matching memories:[/]\n")
+        for memory in memories:
+            metadata_str = json.dumps(memory.metadata, indent=2) if memory.metadata else "None"
             console.print(Panel(
-                f"Content: {memory.content}"
-                + (f"\nMetadata: {memory.metadata}" if memory.metadata else ""),
-                title=f"Memory {i} ({memory.id})",
+                f"{memory.content}\n\n"
+                f"[blue]Agent:[/] {memory.agent_id or 'None'}\n"
+                f"[blue]Created:[/] {memory.created_at}\n"
+                f"[blue]Updated:[/] {memory.updated_at}\n"
+                f"[blue]Metadata:[/] {metadata_str}",
+                title=f"Memory {memory.id}",
                 border_style="blue"
             ))
     except Exception as e:
         console.print(f"[red]Error:[/] {str(e)}")
 
-@memory.command("delete")
+@memory.command()
 @click.argument("memory_id")
-def delete_memory(memory_id: str):
-    """Delete a memory from the system."""
+def forget(memory_id: str):
+    """Delete a memory."""
     try:
         client = get_client()
         if client.forget(memory_id):
-            console.print(f"[green]✓[/] Memory {memory_id} deleted successfully")
+            console.print(f"[green]✓[/] Memory {memory_id} deleted")
         else:
             console.print(f"[red]Error:[/] Memory {memory_id} not found")
     except Exception as e:

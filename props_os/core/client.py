@@ -153,7 +153,8 @@ class PropsOS:
         query: str,
         agent_id: Optional[str] = None,
         limit: int = 5,
-        threshold: float = 0.7
+        threshold: float = 0.7,
+        filters: Optional[Dict] = None
     ) -> List[Memory]:
         """
         Find similar memories using semantic search.
@@ -163,6 +164,14 @@ class PropsOS:
             agent_id: Optional agent ID to filter memories
             limit: Maximum number of memories to return
             threshold: Minimum similarity threshold (0-1)
+            filters: Optional dictionary of metadata filters. Examples:
+                {
+                    "type": "research_note",  # Exact match
+                    "confidence": {"_gt": 0.8},  # Greater than
+                    "timestamp": {"_gte": "2024-01-01"},  # Greater than or equal
+                    "tags": {"_contains": ["important"]},  # Array contains
+                    "metadata": {"_contains": {"source": "user"}}  # JSONB contains
+                }
             
         Returns:
             List of Memory objects sorted by relevance
@@ -178,11 +187,27 @@ class PropsOS:
             ))
             raise
         
+        # Build the where clause
+        where_clause = {}
+        if agent_id:
+            where_clause["agent_id"] = {"_eq": agent_id}
+        
+        # Add metadata filters if provided
+        if filters:
+            for key, value in filters.items():
+                if isinstance(value, dict):
+                    # Complex filter (e.g., _gt, _contains, etc.)
+                    where_clause[key] = value
+                else:
+                    # Simple equality filter
+                    where_clause[key] = {"_eq": value}
+        
         query = """
         query SearchMemories(
           $embedding: _float8!,
           $limit: Int!,
-          $agent_id: uuid
+          $threshold: Float!,
+          $where: memories_bool_exp
         ) {
           search_memories(
             args: {
@@ -190,20 +215,23 @@ class PropsOS:
               similarity_threshold: $threshold,
               max_results: $limit
             },
-            where: { agent_id: { _eq: $agent_id } }
+            where: $where
           ) {
             id
             agent_id
             content
             metadata
             embedding
+            created_at
+            updated_at
           }
         }
         """
         variables = {
             "embedding": query_embedding,
             "limit": limit,
-            "agent_id": agent_id
+            "threshold": threshold,
+            "where": where_clause
         }
         result = self._execute_query(query, variables)
         return [Memory(**m) for m in result["data"]["search_memories"]]
@@ -220,13 +248,30 @@ class PropsOS:
         result = self._execute_query(mutation, {"id": memory_id})
         return result["data"]["delete_memories_by_pk"] is not None
     
-    def create_agent(
+    def get_agent(self, agent_id: str) -> Optional[Agent]:
+        """Get agent details by ID."""
+        query = """
+        query GetAgent($id: uuid!) {
+          agents_by_pk(id: $id) {
+            id
+            name
+            description
+            metadata
+            status
+          }
+        }
+        """
+        result = self._execute_query(query, {"id": agent_id})
+        agent_data = result["data"]["agents_by_pk"]
+        return Agent(**agent_data) if agent_data else None
+    
+    def register_agent(
         self,
         name: str,
         description: Optional[str] = None,
         metadata: Optional[Dict] = None
     ) -> Agent:
-        """Create a new agent."""
+        """Register a new agent in the system."""
         mutation = """
         mutation CreateAgent(
           $name: String!,
@@ -254,25 +299,8 @@ class PropsOS:
         result = self._execute_query(mutation, variables)
         return Agent(**result["data"]["insert_agents_one"])
     
-    def get_agent(self, agent_id: str) -> Optional[Agent]:
-        """Get agent details by ID."""
-        query = """
-        query GetAgent($id: uuid!) {
-          agents_by_pk(id: $id) {
-            id
-            name
-            description
-            metadata
-            status
-          }
-        }
-        """
-        result = self._execute_query(query, {"id": agent_id})
-        agent_data = result["data"]["agents_by_pk"]
-        return Agent(**agent_data) if agent_data else None
-    
-    def delete_agent(self, agent_id: str) -> bool:
-        """Delete an agent and all their memories."""
+    def unregister_agent(self, agent_id: str) -> bool:
+        """Unregister an agent and remove all their memories."""
         mutation = """
         mutation DeleteAgent($id: uuid!) {
           delete_agents_by_pk(id: $id) {
