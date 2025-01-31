@@ -1,0 +1,39 @@
+[tool.poetry]
+name = "props-os"
+version = "0.1.0"
+description = "PropsOS - A lightweight multi-agent memory system with semantic search"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "props_os"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+click = "^8.1.7"
+requests = "^2.31.0"
+python-dotenv = "^1.0.0"
+pydantic = "^2.6.1"
+openai = "^1.12.0"
+rich = "^13.7.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.1.1"
+isort = "^5.13.2"
+pytest = "^8.0.0"
+pytest-cov = "^4.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+props-os = "props_os.cli.main:cli"
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88 

@@ -1,0 +1,25 @@
+- table:
+    name: agents
+    schema: public
+  configuration:
+    custom_root_fields: {}
+    custom_name: agents
+  array_relationships:
+    - name: memories
+      using:
+        foreign_key_constraint_on:
+          column: agent_id
+          table:
+            name: memories
+            schema: public
+
+- table:
+    name: memories
+    schema: public
+  configuration:
+    custom_root_fields: {}
+    custom_name: memories
+  object_relationships:
+    - name: agent
+      using:
+        foreign_key_constraint_on: agent_id 
