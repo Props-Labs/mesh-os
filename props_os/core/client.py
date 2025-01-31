@@ -4,12 +4,16 @@ Core functionality for PropsOS.
 import json
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Dict, List, Optional, Union
 
 import openai
 import requests
 from rich.console import Console
 from rich.panel import Panel
+
+from props_os.core.taxonomy import (DataType, EdgeMetadata, EdgeType, MemoryMetadata,
+                                  RelevanceTag, VersionInfo, KnowledgeSubtype)
 
 console = Console()
 
@@ -28,7 +32,7 @@ class Memory:
     id: str
     agent_id: str
     content: str
-    metadata: Dict
+    metadata: MemoryMetadata
     embedding: List[float]
     created_at: str
     updated_at: str
@@ -39,9 +43,10 @@ class MemoryEdge:
     id: str
     source_memory: str
     target_memory: str
-    relationship: str
+    relationship: EdgeType
     weight: float
     created_at: str
+    metadata: EdgeMetadata
 
 class GraphQLError(Exception):
     """Raised when a GraphQL query fails."""
@@ -169,10 +174,25 @@ class PropsOS:
         self,
         content: str,
         agent_id: str,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Union[Dict, MemoryMetadata]] = None
     ) -> Memory:
         """Store a new memory."""
+        # Convert dict to MemoryMetadata if needed
+        if isinstance(metadata, dict):
+            metadata = MemoryMetadata(**metadata)
+        elif metadata is None:
+            metadata = MemoryMetadata(
+                type=DataType.KNOWLEDGE,
+                subtype=KnowledgeSubtype.DATASET,
+                tags=[],
+                version=1
+            )
+        
+        # Create embedding
         embedding = self._create_embedding(content)
+        
+        # Convert metadata to dict for storage
+        metadata_dict = metadata.model_dump()
         
         query = """
         mutation Remember($content: String!, $agent_id: uuid!, $metadata: jsonb, $embedding: vector!) {
@@ -195,10 +215,15 @@ class PropsOS:
         result = self._execute_query(query, {
             "content": content,
             "agent_id": agent_id,
-            "metadata": metadata or {},
+            "metadata": metadata_dict,
             "embedding": embedding
         })
         memory_data = result["data"]["insert_memories_one"]
+        
+        # Convert stored metadata back to MemoryMetadata if it's a dict
+        if isinstance(memory_data["metadata"], dict):
+            memory_data["metadata"] = MemoryMetadata(**memory_data["metadata"])
+        
         return Memory(**memory_data)
     
     def recall(
@@ -266,22 +291,35 @@ class PropsOS:
         self,
         source_memory_id: str,
         target_memory_id: str,
-        relationship: str,
-        weight: float = 1.0
+        relationship: Union[str, EdgeType],
+        weight: float = 1.0,
+        metadata: Optional[Union[Dict, EdgeMetadata]] = None
     ) -> MemoryEdge:
         """Create a link between two memories."""
+        # Convert string to EdgeType if needed
+        if isinstance(relationship, str):
+            relationship = EdgeType(relationship)
+        
+        # Create edge metadata
+        if isinstance(metadata, dict):
+            metadata = EdgeMetadata(relationship=relationship, weight=weight, **metadata)
+        elif metadata is None:
+            metadata = EdgeMetadata(relationship=relationship, weight=weight)
+        
         query = """
         mutation LinkMemories(
             $source_memory: uuid!,
             $target_memory: uuid!,
             $relationship: String!,
-            $weight: float8!
+            $weight: float8!,
+            $metadata: jsonb!
         ) {
             insert_memory_edges_one(object: {
                 source_memory: $source_memory,
                 target_memory: $target_memory,
                 relationship: $relationship,
-                weight: $weight
+                weight: $weight,
+                metadata: $metadata
             }) {
                 id
                 source_memory
@@ -289,16 +327,26 @@ class PropsOS:
                 relationship
                 weight
                 created_at
+                metadata
             }
         }
         """
         result = self._execute_query(query, {
             "source_memory": source_memory_id,
             "target_memory": target_memory_id,
-            "relationship": relationship,
-            "weight": weight
+            "relationship": relationship.value,
+            "weight": weight,
+            "metadata": metadata.model_dump()
         })
         edge_data = result["data"]["insert_memory_edges_one"]
+        
+        # Convert stored metadata back to EdgeMetadata if it's a dict
+        if isinstance(edge_data["metadata"], dict):
+            edge_data["metadata"] = EdgeMetadata(**edge_data["metadata"])
+        
+        # Convert relationship string to EdgeType
+        edge_data["relationship"] = EdgeType(edge_data["relationship"])
+        
         return MemoryEdge(**edge_data)
 
     def unlink_memories(
@@ -331,7 +379,7 @@ class PropsOS:
         self,
         memory_id: str,
         content: str,
-        metadata: Optional[Dict] = None,
+        metadata: Optional[Union[Dict, MemoryMetadata]] = None,
         create_version_edge: bool = True
     ) -> Memory:
         """Update a memory and optionally create a version edge to the previous version."""
@@ -353,23 +401,49 @@ class PropsOS:
         old_memory = result["data"]["memories_by_pk"]
         if not old_memory:
             raise ValueError(f"Memory {memory_id} not found")
-
+        
+        # Convert old metadata to MemoryMetadata if it's a dict
+        old_metadata = old_memory["metadata"]
+        if isinstance(old_metadata, dict):
+            old_metadata = MemoryMetadata(**old_metadata)
+        
+        # Prepare new metadata
+        if isinstance(metadata, dict):
+            metadata = MemoryMetadata(**metadata)
+        elif metadata is None:
+            metadata = MemoryMetadata(**old_metadata.model_dump())
+        
+        # Update version information
+        metadata.version = old_metadata.version + 1
+        metadata.previous_version = old_memory["id"]
+        metadata.history.append(VersionInfo(
+            version=old_metadata.version,
+            modified_at=datetime.fromisoformat(old_memory["updated_at"].replace("Z", "+00:00")),
+            modified_by=old_memory["agent_id"]
+        ))
+        
         # Create new memory
         new_memory = self.remember(
             content=content,
             agent_id=old_memory["agent_id"],
-            metadata=metadata or old_memory["metadata"]
+            metadata=metadata
         )
-
+        
         # Create version edge if requested
         if create_version_edge:
             self.link_memories(
                 source_memory_id=old_memory["id"],
                 target_memory_id=new_memory.id,
-                relationship="version_of",
-                weight=1.0
+                relationship=EdgeType.VERSION_OF,
+                weight=1.0,
+                metadata=EdgeMetadata(
+                    relationship=EdgeType.VERSION_OF,
+                    weight=1.0,
+                    bidirectional=False,
+                    additional={"version_increment": 1}
+                )
             )
-
+        
         return new_memory
 
     def get_connected_memories(

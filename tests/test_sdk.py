@@ -12,6 +12,7 @@ from openai import OpenAI
 
 from props_os import PropsOS
 from props_os.core.client import Agent, GraphQLError, Memory, MemoryEdge
+from props_os.core.taxonomy import DataType, EdgeType, MemoryMetadata, EdgeMetadata
 
 # Test data
 TEST_AGENT = {
@@ -26,7 +27,12 @@ TEST_MEMORY = {
     "id": "test-memory-id",
     "agent_id": "test-agent-id",
     "content": "Test memory content",
-    "metadata": {"type": "test"},
+    "metadata": {
+        "type": "knowledge",
+        "subtype": "dataset",
+        "tags": ["test"],
+        "version": 1
+    },
     "embedding": [0.1] * 1536,  # Matches OpenAI's embedding size
     "created_at": "2024-01-01T00:00:00Z",
     "updated_at": "2024-01-01T00:00:00Z"
@@ -38,7 +44,13 @@ TEST_MEMORY_EDGE = {
     "target_memory": "test-memory-id-2",
     "relationship": "related_to",
     "weight": 1.0,
-    "created_at": "2024-01-01T00:00:00Z"
+    "created_at": "2024-01-01T00:00:00Z",
+    "metadata": {
+        "relationship": "related_to",
+        "weight": 1.0,
+        "bidirectional": False,
+        "additional": {}
+    }
 }
 
 @pytest.fixture(autouse=True)
