@@ -1,53 +1,55 @@
 # MeshOS
 
-**Multi-agent data operations for AI-powered businesses**
+**The Multi-Agent Framework for AI-Powered Operations**
 
-MeshOS is a **structured, opinionated memory system** designed to power **multi-agent ventures and autonomous business operations**. Unlike generic memory stores, MeshOS provides:
+MeshOS is an **opinionated framework** for building **multi-agent, multi-human AI-driven operations** with structured memory, intelligent workflows, and seamless collaboration. Unlike generic memory stores, MeshOS is purpose-built for:
 
-- **Multi-agent memory orchestration** – AI agents and humans share structured knowledge.
-- **Rich taxonomy & classification** – Knowledge, activity, decision, and media hierarchies.
-- **Graph-based relationships** – Versioned, linked memory across an evolving system.
-- **Operational intelligence** – A path to **fully autonomous ventures** via structured agent collaboration.
-- **Open-source and portable** – Built on **PostgreSQL**, **pgvector**, and **Hasura**, ensuring full portability and no vendor lock-in.
+- **Autonomous Agents & Teams** – Agents and humans share structured, evolving knowledge.
+- **Graph-Based Memory** – Track relationships, dependencies, and influence between data points.
+- **Rich Taxonomy & Classification** – Categorize knowledge, activities, decisions, and media.
+- **Versioned Knowledge** – Full history, updates, and lineage tracking.
+- **Event-Driven Operations** – Context-aware execution of decisions, workflows, and activities.
+- **Open & Portable** – Built on **PostgreSQL**, **pgvector**, and **Hasura**, ensuring no vendor lock-in.
 
 ## 🚀 Why MeshOS?
 
-**Most memory systems are just storage. MeshOS is an operational framework.**
-
-It is **not** just a vector search tool—it is a **full-stack knowledge and activity management layer** for agent-driven businesses.
+Most frameworks give you a **blob of memories**—MeshOS gives you **structured, evolving intelligence.**
 
 | Feature                      | MeshOS | Mem0 / Letta / Zep |
 | ---------------------------- | ------ | ------------------ |
 | **Multi-Agent Memory**       | ✅ Yes  | ❌ No               |
 | **Structured Taxonomy**      | ✅ Yes  | ❌ No               |
 | **Versioned Knowledge**      | ✅ Yes  | ❌ No               |
-| **Semantic & Graph Search**  | ✅ Yes  | ✅ Partial          |
-| **Business-Oriented**        | ✅ Yes  | ❌ No               |
-| **Operational Intelligence** | ✅ Yes  | ❌ No               |
+| **Graph-Based Relationships** | ✅ Yes  | ❌ No               |
+| **Semantic & Vector Search**  | ✅ Yes  | ✅ Partial          |
+| **Event-Driven Operations**  | ✅ Yes  | ❌ No               |
 | **Open-Source & Portable**   | ✅ Yes  | ✅ Partial          |
 
-**Who is MeshOS for?**
+### **Who is MeshOS for?**
 
-✅ **AI-powered ventures** – Businesses that need structured AI agents managing knowledge and decisions.\
-✅ **Autonomous teams** – Multi-agent collaboration with structured memory and contextual understanding.\
-✅ **Developers & enterprises** – Building AI-powered operational systems, not just memory stores.
+✅ **Builders of AI-powered operations** – Structured memory and decision-making for AI-driven systems.  
+✅ **Multi-agent system developers** – AI agents that need to store, process, and evolve shared knowledge.  
+✅ **Developers & engineers** – Wanting an **open-source, PostgreSQL-powered framework** with no lock-in.  
+
+---
 
 ## 🏗️ Core Features
 
-✅ **AI-Driven Memory** – Store structured **knowledge, activities, decisions, and media**.\
-✅ **Taxonomy & Classification** – Enforce hierarchical data models across agents.\
-✅ **Multi-Agent Collaboration** – Agents operate independently, yet share structured memory.\
-✅ **Versioned Knowledge** – Track updates, context changes, and lineage.\
-✅ **Graph Relationships** – Understand how data evolves and influences actions.\
-✅ **Semantic Search** – Retrieve insights with **pgvector-powered** similarity matching.\
-✅ **GraphQL API + SDK** – Query structured memory seamlessly with **Hasura**.\
-✅ **Operational Workflows** – Lay the foundation for **fully autonomous business ventures**.\
-✅ **Fully Open-Source & Portable** – No vendor lock-in, self-host on any PostgreSQL-compatible infrastructure.
+✅ **AI-Driven Memory** – Store structured **knowledge, activities, decisions, and media**.  
+✅ **Taxonomy & Classification** – Enforce hierarchical data models across agents.  
+✅ **Multi-Agent Collaboration** – Agents operate independently, yet share structured memory.  
+✅ **Graph-Based Memory** – Connect data intelligently with linked relationships.  
+✅ **Versioned Knowledge** – Track updates, context changes, and lineage.  
+✅ **Event-Driven Workflows** – Enable real-time, state-aware operations.  
+✅ **Semantic Search** – Retrieve insights with **pgvector-powered** similarity matching.  
+✅ **GraphQL API + SDK** – Query structured memory seamlessly with **Hasura**.  
+✅ **Fully Open-Source & Portable** – Self-host on any PostgreSQL-compatible infrastructure.  
+
+---
 
 ## 🔥 Getting Started
 
 ### Install & Create a New Instance
-
 ```bash
 pip install mesh-os
 mesh-os create my-project && cd my-project
@@ -55,31 +57,28 @@ mesh-os up
 ```
 
 ### Register an AI Agent
-
 ```bash
 mesh-os agent register "strategic-analyst"
 ```
 
 ### Store a Memory
-
 ```bash
 mesh-os memory remember "The company should expand into renewable energy..."
 ```
 
 ### Retrieve Knowledge via Semantic Search
-
 ```bash
 mesh-os memory recall "What business strategies are stored?"
 ```
 
 ### Link Related Memories
-
 ```bash
 mesh-os memory link <memory-id-1> <memory-id-2> --relationship "influences"
 ```
 
-## 📚 Python SDK Example
+---
 
+## 📚 Python SDK Example
 ```python
 from mesh_os import MeshOS
 
@@ -105,6 +104,8 @@ memory = os.remember(
 results = os.recall(query="What are the company's growth strategies?")
 ```
 
+---
+
 ## 🔗 Structured Taxonomy & Memory Graph
 
 MeshOS **enforces structured knowledge** with **memory classification** and **versioning**:
@@ -118,12 +119,11 @@ MeshOS **enforces structured knowledge** with **memory classification** and **ve
 
 Memories **evolve** over time, with full versioning and relationship tracking.
 
-## 🛠️ Full Documentation
+---
+
+## 🛠️ Development & Configuration
 
 ### **Configuration**
-
-The `.env` file supports the following options:
-
 ```ini
 # Required
 OPENAI_API_KEY=your_api_key_here
@@ -137,31 +137,18 @@ HASURA_ENABLE_CONSOLE=true
 ```
 
 ### **Development**
-
-Clone the repository:
-
 ```bash
-git clone https://github.com/Props-Labs/mesh-os.git
+git clone https://github.com/yourusername/mesh-os.git
 cd mesh-os
-```
-
-Install dependencies:
-
-```bash
 poetry install
-```
-
-Run tests:
-
-```bash
 poetry run pytest
 ```
 
 ### **Contributing**
-
 Contributions are welcome! Please submit a Pull Request.
 
-## ⚖️ License
+---
 
+## ⚖️ License
 MIT License – see [LICENSE](./LICENSE) for details.
 
