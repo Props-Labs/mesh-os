@@ -1,19 +1,19 @@
 # MeshOS
 
-**The Multi-Agent Framework for AI-Powered Operations**
+**The Memory & Knowledge Engine for Multi-Agent Systems**
 
-MeshOS is an **opinionated framework** for building **multi-agent, multi-human AI-driven operations** with structured memory, intelligent workflows, and seamless collaboration. Unlike generic memory stores, MeshOS is purpose-built for:
+MeshOS is a **developer-first framework** for building **multi-agent AI-driven operations** with structured memory, knowledge retrieval, and real-time collaboration. Unlike generic memory stores, MeshOS is purpose-built for:
 
-- **Autonomous Agents & Teams** – Agents and humans share structured, evolving knowledge.
-- **Graph-Based Memory** – Track relationships, dependencies, and influence between data points.
-- **Rich Taxonomy & Classification** – Categorize knowledge, activities, decisions, and media.
-- **Versioned Knowledge** – Full history, updates, and lineage tracking.
-- **Event-Driven Operations** – Context-aware execution of decisions, workflows, and activities.
-- **Open & Portable** – Built on **PostgreSQL**, **pgvector**, and **Hasura**, ensuring no vendor lock-in.
+- **Autonomous Agents & Teams** – Agents and humans evolve a shared memory over time.
+- **Graph-Based Memory** – Track relationships, dependencies, and evolving knowledge.
+- **Fast Semantic Search** – Vector-based retrieval with **pgvector**.
+- **Event-Driven Execution** – Automate workflows based on evolving context.
+- **Versioned Knowledge** – Track updates, past decisions, and historical context.
+- **Open & Portable** – Runs on **PostgreSQL + Hasura** with no vendor lock-in.
 
 ## 🚀 Why MeshOS?
 
-Most frameworks give you a **blob of memories**—MeshOS gives you **structured, evolving intelligence.**
+Most frameworks give you a **blob of memories**—MeshOS gives you **structured, evolving intelligence** with deep relationships and versioning.
 
 | Feature                      | MeshOS | Mem0 / Letta / Zep |
 | ---------------------------- | ------ | ------------------ |
@@ -22,7 +22,7 @@ Most frameworks give you a **blob of memories**—MeshOS gives you **structured,
 | **Versioned Knowledge**      | ✅ Yes  | ❌ No               |
 | **Graph-Based Relationships** | ✅ Yes  | ❌ No               |
 | **Semantic & Vector Search**  | ✅ Yes  | ✅ Partial          |
-| **Event-Driven Operations**  | ✅ Yes  | ❌ No               |
+| **Event-Driven Execution**  | ✅ Yes  | ❌ No               |
 | **Open-Source & Portable**   | ✅ Yes  | ✅ Partial          |
 
 ### **Who is MeshOS for?**
@@ -35,15 +35,12 @@ Most frameworks give you a **blob of memories**—MeshOS gives you **structured,
 
 ## 🏗️ Core Features
 
-✅ **AI-Driven Memory** – Store structured **knowledge, activities, decisions, and media**.  
-✅ **Taxonomy & Classification** – Enforce hierarchical data models across agents.  
-✅ **Multi-Agent Collaboration** – Agents operate independently, yet share structured memory.  
-✅ **Graph-Based Memory** – Connect data intelligently with linked relationships.  
-✅ **Versioned Knowledge** – Track updates, context changes, and lineage.  
-✅ **Event-Driven Workflows** – Enable real-time, state-aware operations.  
-✅ **Semantic Search** – Retrieve insights with **pgvector-powered** similarity matching.  
-✅ **GraphQL API + SDK** – Query structured memory seamlessly with **Hasura**.  
-✅ **Fully Open-Source & Portable** – Self-host on any PostgreSQL-compatible infrastructure.  
+✅ **Memory for Multi-Agent Systems** – Let agents store, retrieve, and link structured knowledge.  
+✅ **Fast Semantic Search** – pgvector-powered similarity matching across all memories.  
+✅ **Graph-Based Knowledge** – Build evolving relationships between facts, ideas, and actions.  
+✅ **Versioning Built-In** – Track updates, past decisions, and context shifts.  
+✅ **Event-Driven Execution** – Automate workflows based on new knowledge.  
+✅ **Open & Portable** – Runs anywhere PostgreSQL does. No black-box infrastructure.  
 
 ---
 
@@ -58,17 +55,17 @@ mesh-os up
 
 ### Register an AI Agent
 ```bash
-mesh-os agent register "strategic-analyst"
+mesh-os agent register "AI_Explorer"
 ```
 
 ### Store a Memory
 ```bash
-mesh-os memory remember "The company should expand into renewable energy..."
+mesh-os memory remember "The Moon has water ice."
 ```
 
 ### Retrieve Knowledge via Semantic Search
 ```bash
-mesh-os memory recall "What business strategies are stored?"
+mesh-os memory recall "Tell me about the Moon."
 ```
 
 ### Link Related Memories
@@ -86,22 +83,22 @@ from mesh_os import MeshOS
 os = MeshOS()
 
 # Register an agent
-agent = os.register_agent(name="strategic-analyst")
+agent = os.register_agent(name="AI_Explorer")
 
 # Store structured knowledge
 memory = os.remember(
-    content="The company should expand into renewable energy...",
+    content="The Moon has water ice.",
     agent_id=agent.id,
     metadata={
-        "type": "decision",
-        "subtype": "company-strategy",
-        "tags": ["growth", "sustainability"],
+        "type": "knowledge",
+        "subtype": "fact",
+        "tags": ["astronomy", "moon"],
         "version": 1
     }
 )
 
 # Retrieve similar knowledge
-results = os.recall(query="What are the company's growth strategies?")
+results = os.recall(query="Tell me about the Moon.")
 ```
 
 ---
@@ -112,10 +109,10 @@ MeshOS **enforces structured knowledge** with **memory classification** and **ve
 
 | **Memory Type** | **Examples**                                 |
 | --------------- | -------------------------------------------- |
-| **Knowledge**   | Research reports, datasets, company strategy |
-| **Activity**    | Agent workflows, logs, system events         |
-| **Decision**    | Policy updates, business strategy            |
-| **Media**       | Documents, images, AI-generated content      |
+| **Knowledge**   | Research reports, datasets, concepts        |
+| **Activity**    | Agent workflows, logs, system events        |
+| **Decision**    | Policy updates, business strategy           |
+| **Media**       | Documents, images, AI-generated content     |
 
 Memories **evolve** over time, with full versioning and relationship tracking.
 
