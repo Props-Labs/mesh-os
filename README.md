@@ -11,7 +11,7 @@ MeshOS is a **developer-first framework** for building **multi-agent AI-driven o
 - **Versioned Knowledge** – Track updates, past decisions, and historical context.
 - **Open & Portable** – Runs on **PostgreSQL + Hasura** with no vendor lock-in.
 
-## 🚀 Why MeshOS?
+## Why MeshOS?
 
 Most frameworks give you a **blob of memories**—MeshOS gives you **structured, evolving intelligence** with deep relationships and versioning.
 
@@ -30,17 +30,6 @@ Most frameworks give you a **blob of memories**—MeshOS gives you **structured,
 ✅ **Builders of AI-powered operations** – Structured memory and decision-making for AI-driven systems.  
 ✅ **Multi-agent system developers** – AI agents that need to store, process, and evolve shared knowledge.  
 ✅ **Developers & engineers** – Wanting an **open-source, PostgreSQL-powered framework** with no lock-in.  
-
----
-
-## 🏗️ Core Features
-
-✅ **Memory for Multi-Agent Systems** – Let agents store, retrieve, and link structured knowledge.  
-✅ **Fast Semantic Search** – pgvector-powered similarity matching across all memories.  
-✅ **Graph-Based Knowledge** – Build evolving relationships between facts, ideas, and actions.  
-✅ **Versioning Built-In** – Track updates, past decisions, and context shifts.  
-✅ **Event-Driven Execution** – Automate workflows based on new knowledge.  
-✅ **Open & Portable** – Runs anywhere PostgreSQL does. No black-box infrastructure.  
 
 ---
 
@@ -145,7 +134,7 @@ flowchart LR
 
 ---
 
-## 🔥 Getting Started
+## Getting Started
 
 ### Install & Create a New Instance
 ```bash
@@ -154,29 +143,7 @@ mesh-os create my-project && cd my-project
 mesh-os up
 ```
 
-### Register an AI Agent
-```bash
-mesh-os agent register "AI_Explorer"
-```
-
-### Store a Memory
-```bash
-mesh-os memory remember "The Moon has water ice."
-```
-
-### Retrieve Knowledge via Semantic Search
-```bash
-mesh-os memory recall "Tell me about the Moon."
-```
-
-### Link Related Memories
-```bash
-mesh-os memory link <memory-id-1> <memory-id-2> --relationship "influences"
-```
-
----
-
-## 📚 Python SDK Example
+## Usage
 ```python
 from mesh_os import MeshOS
 
@@ -201,6 +168,17 @@ memory = os.remember(
 # Retrieve similar knowledge
 results = os.recall(query="Tell me about the Moon.")
 ```
+
+---
+
+## 🏗️ Core Features
+
+✅ **Memory for Multi-Agent Systems** – Let agents store, retrieve, and link structured knowledge.  
+✅ **Fast Semantic Search** – pgvector-powered similarity matching across all memories.  
+✅ **Graph-Based Knowledge** – Build evolving relationships between facts, ideas, and actions.  
+✅ **Versioning Built-In** – Track updates, past decisions, and context shifts.  
+✅ **Event-Driven Execution** – Automate workflows based on new knowledge.  
+✅ **Open & Portable** – Runs anywhere PostgreSQL does. No black-box infrastructure.  
 
 ---
 
