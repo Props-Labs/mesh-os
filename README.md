@@ -248,5 +248,5 @@ Contributions are welcome! Please submit a Pull Request.
 ---
 
 ## ⚖️ License
-MIT License – see [LICENSE](./LICENSE) for details.
+This project is licensed under the Apache 2.0 License – see [LICENSE](./LICENSE) for details.
 
