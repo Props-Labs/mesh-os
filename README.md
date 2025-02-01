@@ -44,6 +44,107 @@ Most frameworks give you a **blob of memories**—MeshOS gives you **structured,
 
 ---
 
+```mermaid
+flowchart LR
+    %% Main System
+    subgraph MeshOS[MeshOS System]
+        direction LR
+
+        %% Taxonomy Details
+        subgraph Taxonomy[Memory Classification]
+            direction TB
+            
+            subgraph DataTypes[Data Types]
+                direction LR
+                knowledge[Knowledge Type]
+                activity[Activity Type]
+                decision[Decision Type]
+                media[Media Type]
+            end
+
+            subgraph Subtypes[Example Subtypes]
+                direction LR
+                k_types[Research/Mission/Vision]
+                a_types[Conversations/Logs/Events]
+                d_types[Policies/Strategies]
+                m_types[Documents/Images]
+
+                knowledge --> k_types
+                activity --> a_types
+                decision --> d_types
+                media --> m_types
+            end
+
+            subgraph Relations[Edge Types]
+                direction LR
+                basic[related_to/version_of]
+                semantic[influences/depends_on]
+                temporal[follows_up/precedes]
+            end
+        end
+
+        %% Memory Operations
+        subgraph MemoryEngine[Memory Operations]
+            direction LR
+            rememberAction[Store/Remember]
+            recallAction[Search/Recall]
+            linkAction[Link Memories]
+            versioning[Version Control]
+
+            rememberAction --> recallAction
+            recallAction --> linkAction
+            linkAction --> versioning
+        end
+    end
+
+    %% Organization & Agents
+    subgraph Organization[Organization & Agents]
+        direction TB
+
+        %% Company Memory
+        subgraph CompanyMemory[Company-Wide Memory]
+            direction LR
+            corpVision[Company Vision]
+            corpMission[Company Mission]
+            corpData[Knowledge Base]
+        end
+
+        %% Agents
+        subgraph Agent1[Research Agent]
+            a1Mem[Research Memories]
+        end
+
+        subgraph Agent2[Service Agent]
+            a2Mem[Service Memories]
+        end
+    end
+
+    %% System Connections
+    Taxonomy --> MemoryEngine
+    MemoryEngine --> Organization
+
+    %% Memory Connections
+    corpVision -.->|influences| a1Mem
+    corpMission -.->|guides| a2Mem
+    a1Mem -.->|shares| a2Mem
+    a2Mem -.->|feedback| corpData
+    a1Mem -.->|versions| corpData
+
+    %% Styling
+    classDef system fill:#dfeff9,stroke:#333,stroke-width:1.5px
+    classDef engine fill:#fcf8e3,stroke:#333
+    classDef taxonomy fill:#e7f5e9,stroke:#333
+    classDef types fill:#f8f4ff,stroke:#333
+    classDef org fill:#f4f4f4,stroke:#333
+
+    class MeshOS system
+    class MemoryEngine engine
+    class Taxonomy,DataTypes,Subtypes,Relations taxonomy
+    class Organization org
+```
+
+---
+
 ## 🔥 Getting Started
 
 ### Install & Create a New Instance
