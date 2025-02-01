@@ -1,3 +1,5 @@
+![MeshOS Banner](./assets/meshos-banner.png)
+
 # MeshOS
 
 **The Memory & Knowledge Engine for Multi-Agent Systems**
