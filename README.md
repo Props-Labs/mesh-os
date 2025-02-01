@@ -1,208 +1,121 @@
 # MeshOS
 
-A lightweight multi-agent memory system for business. Complete with vector search capabilities, built on PostgreSQL and Hasura.
+**Multi-agent data operations for AI-powered businesses**
 
-## Features
+MeshOS is a **structured, opinionated memory system** designed to power **multi-agent ventures and autonomous business operations**. Unlike generic memory stores, MeshOS provides:
 
-- 🤖 Multi-agent system with lifecycle management
-- 🧠 Vector-based memory storage using pgvector
-- 🔍 Semantic search with advanced filtering
-- 🌳 Rich taxonomy system for memory classification
-- 🔗 Memory linking with relationship types
-- 🚀 GraphQL API powered by Hasura
-- 🛠️ Easy-to-use CLI
-- 📚 Python SDK for seamless integration
+- **Multi-agent memory orchestration** – AI agents and humans share structured knowledge.
+- **Rich taxonomy & classification** – Knowledge, activity, decision, and media hierarchies.
+- **Graph-based relationships** – Versioned, linked memory across an evolving system.
+- **Operational intelligence** – A path to **fully autonomous ventures** via structured agent collaboration.
 
-## Quick Start
+## 🚀 Why MeshOS?
 
-1. Install the package:
+**Most memory systems are just storage. MeshOS is an operational framework.**
+
+It is **not** just a vector search tool—it is a **full-stack knowledge and activity management layer** for agent-driven businesses.
+
+| Feature | MeshOS | Mem0 / Letta / Zep |
+|---------|--------|-------------------|
+| **Multi-Agent Memory** | ✅ Yes | ❌ No |
+| **Structured Taxonomy** | ✅ Yes | ❌ No |
+| **Versioned Knowledge** | ✅ Yes | ❌ No |
+| **Semantic & Graph Search** | ✅ Yes | ✅ Partial |
+| **Business-Oriented** | ✅ Yes | ❌ No |
+| **Operational Intelligence** | ✅ Yes | ❌ No |
+
+**Who is MeshOS for?**
+
+✅ **AI-powered ventures** – Businesses that need structured AI agents managing knowledge and decisions.  
+✅ **Autonomous teams** – Multi-agent collaboration with structured memory and contextual understanding.  
+✅ **Developers & enterprises** – Building AI-powered operational systems, not just memory stores.  
+
+## 🏗️ Core Features
+
+✅ **AI-Driven Memory** – Store structured **knowledge, activities, decisions, and media**.  
+✅ **Taxonomy & Classification** – Enforce hierarchical data models across agents.  
+✅ **Multi-Agent Collaboration** – Agents operate independently, yet share structured memory.  
+✅ **Versioned Knowledge** – Track updates, context changes, and lineage.  
+✅ **Graph Relationships** – Understand how data evolves and influences actions.  
+✅ **Semantic Search** – Retrieve insights with **pgvector-powered** similarity matching.  
+✅ **GraphQL API + SDK** – Query structured memory seamlessly with **Hasura**.  
+✅ **Operational Workflows** – Lay the foundation for **fully autonomous business ventures**.  
+
+## 🔥 Getting Started
+
+### Install & Create a New Instance
 ```bash
 pip install mesh-os
-```
-
-2. Create a new project:
-```bash
-mesh-os create my-os
-cd my-os
-```
-
-3. Add your OpenAI API key when prompted, or edit `.env`:
-```bash
-OPENAI_API_KEY=your_api_key_here
-```
-
-4. Start the services:
-```bash
+mesh-os create my-project && cd my-project
 mesh-os up
 ```
 
-That's it! Your MeshOS instance is now running with:
-- PostgreSQL with pgvector at `localhost:5432`
-- Hasura GraphQL API at `http://localhost:8080/v1/graphql`
-- Hasura Console at `http://localhost:8080/console`
+### Register an AI Agent
+```bash
+mesh-os agent register "strategic-analyst"
+```
 
-## Python SDK Usage
+### Store a Memory
+```bash
+mesh-os memory remember "The company should expand into renewable energy..."
+```
+
+### Retrieve Knowledge via Semantic Search
+```bash
+mesh-os memory recall "What business strategies are stored?"
+```
+
+### Link Related Memories
+```bash
+mesh-os memory link <memory-id-1> <memory-id-2> --relationship "influences"
+```
+
+## 📚 Python SDK Example
 
 ```python
 from mesh_os import MeshOS
-from mesh_os.core.taxonomy import DataType, KnowledgeSubtype
 
-# Initialize the client
+# Initialize MeshOS
 os = MeshOS()
 
 # Register an agent
-agent = os.register_agent(
-    name="research-assistant",
-    description="AI research assistant",
-    metadata={
-        "capabilities": ["research", "summarization"],
-        "model": "gpt-4"
-    }
-)
+agent = os.register_agent(name="strategic-analyst")
 
-# Store memories with taxonomy
+# Store structured knowledge
 memory = os.remember(
-    content="The key insight from the paper is that transformer architectures...",
+    content="The company should expand into renewable energy...",
     agent_id=agent.id,
     metadata={
-        "type": DataType.KNOWLEDGE,
-        "subtype": KnowledgeSubtype.RESEARCH_PAPER,
-        "source": "arxiv:2312.12345",
-        "confidence": 0.95,
-        "tags": ["paper", "transformers", "important"]
+        "type": "decision",
+        "subtype": "company-strategy",
+        "tags": ["growth", "sustainability"],
+        "version": 1
     }
 )
 
-# Link related memories
-os.link_memories(
-    source_id=memory.id,
-    target_id=other_memory.id,
-    relationship="related_to",
-    weight=0.8
-)
-
-# Search memories with advanced filters
-memories = os.recall(
-    query="What were the key insights about transformers?",
-    agent_id=agent.id,  # Optional: filter by agent
-    limit=5,
-    threshold=0.7,  # Similarity threshold
-    filters={
-        # Filter by taxonomy
-        "type": DataType.KNOWLEDGE,
-        "subtype": KnowledgeSubtype.RESEARCH_PAPER,
-        
-        # Numeric comparisons
-        "confidence": {"_gt": 0.8},
-        
-        # Date/time filters
-        "created_at": {"_gte": "2024-01-01"},
-        
-        # Array operations
-        "tags": {"_contains": ["important"]},
-        
-        # Nested JSON filters
-        "metadata": {"_contains": {"source": "arxiv"}}
-    }
-)
-
-# Delete a specific memory
-os.forget(memory.id)
-
-# Unregister an agent (and all their memories)
-os.unregister_agent(agent.id)
+# Retrieve similar knowledge
+results = os.recall(query="What are the company's growth strategies?")
 ```
 
-## CLI Usage
+## 🔗 Structured Taxonomy & Memory Graph
 
-```bash
-# Agent Management
-mesh-os agent register "assistant" \
-    --description "Research assistant" \
-    --metadata '{"model": "gpt-4"}'
+MeshOS **enforces structured knowledge** with **memory classification** and **versioning**:
 
-mesh-os agent unregister <agent-id>
+| **Memory Type** | **Examples** |
+|----------------|-------------|
+| **Knowledge** | Research reports, datasets, company strategy |
+| **Activity** | Agent workflows, logs, system events |
+| **Decision** | Policy updates, business strategy |
+| **Media** | Documents, images, AI-generated content |
 
-# Memory Management
-mesh-os memory remember "Important insight..." \
-    --agent-id <agent-id> \
-    --metadata '{
-        "type": "knowledge",
-        "subtype": "research_paper",
-        "tags": ["important"]
-    }'
+Memories **evolve** over time, with full versioning and relationship tracking.  
 
-# Memory Linking
-mesh-os memory link <source-id> <target-id> \
-    --relationship "related_to" \
-    --weight 0.8
+## 🛠️ Full Documentation
 
-mesh-os memory unlink <source-id> <target-id> \
-    --relationship "related_to"
-
-# Search with filters
-mesh-os memory recall "What do you know?" \
-    --agent-id <agent-id> \
-    --limit 5 \
-    --threshold 0.7 \
-    --filter type=knowledge \
-    --filter subtype=research_paper \
-    --filter 'confidence._gt=0.8' \
-    --filter 'created_at._gte=2024-01-01' \
-    --filter 'tags._contains=["important"]' \
-    --filter 'metadata._contains={"source":"arxiv"}'
-
-mesh-os memory forget <memory-id>
-
-# View Memory Connections
-mesh-os memory connections <memory-id> \
-    --relationship "related_to" \
-    --depth 2
-```
-
-## Memory Taxonomy
-
-MeshOS uses a rich taxonomy system to classify memories:
-
-### Data Types
-- `KNOWLEDGE`: Facts, concepts, and information
-- `ACTIVITY`: Actions, events, and behaviors
-- `DECISION`: Choices, reasoning, and outcomes
-- `MEDIA`: Images, audio, and other media
-
-### Subtypes
-Each data type has specific subtypes:
-
-**Knowledge**
-- `DATASET`: Structured data collections
-- `RESEARCH_PAPER`: Academic papers and findings
-- `CONCEPT`: Abstract ideas and theories
-- `FACT`: Verified information
-- `OBSERVATION`: Direct observations
-
-**Activity**
-- `USER_INTERACTION`: Conversations and exchanges
-- `SYSTEM_EVENT`: Internal system events
-- `TASK`: Specific actions or jobs
-- `PROCESS`: Multi-step procedures
-
-**Decision**
-- `REASONING`: Logic and rationale
-- `OUTCOME`: Results and consequences
-- `PLAN`: Future actions
-- `EVALUATION`: Assessments and judgments
-
-**Media**
-- `IMAGE`: Visual content
-- `AUDIO`: Sound recordings
-- `VIDEO`: Motion pictures
-- `DOCUMENT`: Rich text and files
-
-## Configuration
+### **Configuration**
 
 The `.env` file supports the following options:
-
-```bash
+```ini
 # Required
 OPENAI_API_KEY=your_api_key_here
 
@@ -214,36 +127,27 @@ HASURA_PORT=8080
 HASURA_ENABLE_CONSOLE=true
 ```
 
-## Architecture
+### **Development**
 
-MeshOS is built on:
-- **PostgreSQL + pgvector**: For persistent storage and vector similarity search
-- **Hasura**: For the GraphQL API and real-time subscriptions
-- **OpenAI**: For generating embeddings (using `text-embedding-3-small`)
-- **Python**: For the SDK and CLI
-
-## Development
-
-1. Clone the repository:
+Clone the repository:
 ```bash
 git clone https://github.com/yourusername/mesh-os.git
 cd mesh-os
 ```
-
-2. Install dependencies:
+Install dependencies:
 ```bash
 poetry install
 ```
-
-3. Run tests:
+Run tests:
 ```bash
 poetry run pytest
 ```
 
-## Contributing
+### **Contributing**
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please submit a Pull Request.
 
-## License
+## ⚖️ License
 
-MIT License - see [LICENSE](LICENSE) for details. 
+MIT License – see [LICENSE](./LICENSE) for details.
+
