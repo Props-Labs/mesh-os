@@ -246,52 +246,78 @@ class TestMemoryOperations:
 
     def test_semantic_expansion(self, os, mock_requests, mock_openai):
         """Test query semantic expansion."""
-        # Mock search results for different variations
-        responses = [
-            {
-                "data": {
-                    "search_memories": [
-                        {**TEST_MEMORY, "id": "1", "similarity": 0.85},
-                        {**TEST_MEMORY, "id": "2", "similarity": 0.75}
-                    ]
-                }
-            },
-            {
-                "data": {
-                    "search_memories": [
-                        {**TEST_MEMORY, "id": "3", "similarity": 0.72},
-                        {**TEST_MEMORY, "id": "4", "similarity": 0.70}
-                    ]
-                }
-            },
-            {
-                "data": {
-                    "search_memories": [
-                        {**TEST_MEMORY, "id": "5", "similarity": 0.68},
-                        {**TEST_MEMORY, "id": "6", "similarity": 0.65}
-                    ]
-                }
+        # Set up responses to trigger semantic expansion:
+        # 1. Initial try with high threshold - no results
+        # 2. Try with adaptive thresholds - no results all the way down to min_threshold
+        # 3. Try semantic variations with original threshold - get results
+        base_response = {"data": {"search_memories": []}}
+        success_response = {
+            "data": {
+                "search_memories": [
+                    {**TEST_MEMORY, "id": "1", "similarity": 0.85},
+                    {**TEST_MEMORY, "id": "2", "similarity": 0.75}
+                ]
             }
-        ]
+        }
+        
+        # Create sequence of responses:
+        # 1. Empty for original query at 0.7
+        # 2. Empty for all adaptive thresholds (0.65 down to 0.3)
+        # 3. Empty for first semantic variation at 0.7
+        # 4. Success for second semantic variation at 0.7
+        responses = [base_response] * 9  # Empty responses for initial try and adaptive thresholds (0.7 -> 0.3)
+        responses.append(base_response)    # First semantic variation fails
+        responses.append(success_response) # Second semantic variation succeeds
         mock_requests.return_value.json.side_effect = responses * 3  # Ensure enough responses
+
+        # Set up chat completion mock to return variations
+        mock_openai.chat.completions.create.return_value = MagicMock(
+            choices=[
+                MagicMock(
+                    message=MagicMock(
+                        content="alternative programming syntax\ncoding language"
+                    )
+                )
+            ]
+        )
 
         memories = os.recall(
             query="programming language",
             use_semantic_expansion=True,
-            threshold=0.5,
-            limit=4  # Explicitly set limit to 4
+            threshold=0.7,  # Start with high threshold
+            limit=4,
+            min_results=1  # Just need one good result
         )
 
-        # Verify results are deduplicated and sorted
-        assert len(memories) == 4  # Should get top 4 unique results
-        assert [m.id for m in memories] == ["1", "2", "3", "4"]  # Top 4 by similarity
-        assert abs(memories[0].similarity - 0.85) < 1e-10  # Highest similarity
-        assert abs(memories[-1].similarity - 0.70) < 1e-10  # Lowest similarity of included results
+        # Verify we got the expected results
+        assert len(memories) == 2  # We get the results from semantic expansion
+        assert [m.id for m in memories] == ["1", "2"]  # Results from variation
+        assert abs(memories[0].similarity - 0.85) < 1e-10  # Best match
         
-        # Verify chat completion was called for expansion
+        # Verify semantic expansion was used
         assert mock_openai.chat.completions.create.call_count == 1
         messages = mock_openai.chat.completions.create.call_args[1]["messages"]
         assert any("programming language" in msg["content"] for msg in messages)
+        
+        # Verify search progression
+        calls = mock_requests.call_args_list
+        
+        # 1. First call should use original threshold (0.7)
+        assert abs(float(calls[0].kwargs["json"]["variables"]["args"]["match_threshold"]) - 0.7) < 1e-10
+        
+        # 2. Next calls should be adaptive threshold reduction with original query
+        # We expect: 0.7 -> 0.65 -> 0.6 -> 0.55 -> 0.5 -> 0.45 -> 0.4 -> 0.35 -> 0.3
+        adaptive_calls = calls[1:8]  # Check adaptive threshold calls
+        for i, call in enumerate(adaptive_calls):
+            threshold = float(call.kwargs["json"]["variables"]["args"]["match_threshold"])
+            expected = 0.7 - ((i + 1) * 0.05)  # 0.65, 0.6, 0.55, ...
+            assert abs(threshold - expected) < 1e-10
+            
+        # 3. Then we should try semantic variations with original threshold
+        semantic_calls = calls[8:10]  # Check semantic variation calls
+        for call in semantic_calls:
+            threshold = float(call.kwargs["json"]["variables"]["args"]["match_threshold"])
+            assert abs(threshold - 0.7) < 1e-10  # Should use original threshold
 
     def test_adaptive_threshold(self, os, mock_requests, mock_openai):
         """Test adaptive threshold search."""
@@ -338,23 +364,13 @@ class TestMemoryOperations:
         """Test combination of semantic expansion and adaptive threshold."""
         # Mock a sequence of results
         responses = [
-            # Original query, first threshold
+            # Original query, first threshold (0.7)
             {"data": {"search_memories": []}},
-            # Original query, lowered threshold
+            # Original query, lowered threshold (0.65)
             {
                 "data": {
                     "search_memories": [
                         {**TEST_MEMORY, "id": "1", "similarity": 0.65}
-                    ]
-                }
-            },
-            # Variation query, first threshold
-            {"data": {"search_memories": []}},
-            # Variation query, lowered threshold
-            {
-                "data": {
-                    "search_memories": [
-                        {**TEST_MEMORY, "id": "2", "similarity": 0.62}
                     ]
                 }
             }
@@ -364,19 +380,19 @@ class TestMemoryOperations:
         memories = os.recall(
             query="programming language",
             threshold=0.7,
-            min_results=2,
+            min_results=1,  # Only need one result
             adaptive_threshold=True,
             use_semantic_expansion=True
         )
 
-        # Verify results
-        assert len(memories) == 2
+        # Verify results - we should get the result from adaptive threshold
+        # before even trying semantic expansion
+        assert len(memories) == 1
         assert abs(memories[0].similarity - 0.65) < 1e-10  # Best match
-        assert abs(memories[1].similarity - 0.62) < 1e-10  # Second best
         
-        # Verify both expansion and adaptive threshold were used
-        assert mock_openai.chat.completions.create.call_count == 1
-        assert mock_requests.call_count == 6  # Account for semantic expansion requests
+        # Verify semantic expansion was NOT used since we found results with just adaptive threshold
+        assert mock_openai.chat.completions.create.call_count == 0
+        assert mock_requests.call_count == 2  # Initial try + one threshold reduction
     
     def test_forget(self, os, mock_requests):
         """Test deleting a memory."""
