@@ -36,6 +36,7 @@ class Memory:
     embedding: List[float]
     created_at: str
     updated_at: str
+    similarity: Optional[float] = None  # Add similarity field
 
 @dataclass
 class MemoryEdge:
@@ -237,7 +238,18 @@ class MeshOS:
         threshold: float = 0.7,
         filters: Optional[Dict] = None
     ) -> List[Memory]:
-        """Search memories by semantic similarity."""
+        """Search memories by semantic similarity.
+        
+        Args:
+            query: The text to search for
+            agent_id: Optional agent ID to filter by
+            limit: Maximum number of results to return
+            threshold: Minimum similarity score (0-1, higher is more similar)
+            filters: Additional filters to apply
+            
+        Returns:
+            List of Memory objects with similarity scores
+        """
         # Create embedding for the query
         embedding_str = f"[{','.join(str(x) for x in self._create_embedding(query))}]"
         
@@ -271,12 +283,13 @@ class MeshOS:
             }
         })
         
-        # Convert results to Memory objects
+        # Convert results to Memory objects, preserving similarity scores
         memories = []
         for m in result["data"]["search_memories"]:
-            # Remove similarity from the dict before creating Memory object
             similarity = m.pop("similarity", None)
-            memories.append(Memory(**m))
+            memory = Memory(**m)
+            memory.similarity = similarity
+            memories.append(memory)
         
         return memories
     
