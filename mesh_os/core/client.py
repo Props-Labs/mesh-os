@@ -230,12 +230,49 @@ class MeshOS:
         
         return Memory(**memory_data)
     
+    def _expand_query(self, query: str, num_variations: int = 2) -> List[str]:
+        """Generate semantic variations of the query.
+        
+        Args:
+            query: The original query text
+            num_variations: Number of variations to generate
+            
+        Returns:
+            List of query variations including the original
+        """
+        system_prompt = f"""Generate {num_variations} semantic variations of the query that mean the same thing.
+        Focus on different ways to express the same concept.
+        Return ONLY the variations, one per line, no numbering or extra text.
+        Variations should be concise and natural, similar in length to the original."""
+        
+        response = self.openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{
+                "role": "system",
+                "content": system_prompt
+            }, {
+                "role": "user",
+                "content": query
+            }],
+            temperature=0.7
+        )
+        
+        result = [query]  # Include original
+        result.extend([
+            v.strip() for v in response.choices[0].message.content.split('\n')
+            if v.strip()
+        ])
+        return result[:num_variations + 1]  # Limit to requested number of variations
+
     def recall(
         self,
         query: str,
         agent_id: Optional[str] = None,
-        limit: int = 10,
-        threshold: float = 0.7,
+        limit: int = 5,  # Reduced default limit
+        threshold: float = 0.5,  # Lower default threshold
+        min_results: int = 3,  # Default min results
+        adaptive_threshold: bool = True,  # Enable by default
+        use_semantic_expansion: bool = True,  # Enable by default
         filters: Optional[Dict] = None
     ) -> List[Memory]:
         """Search memories by semantic similarity.
@@ -243,13 +280,140 @@ class MeshOS:
         Args:
             query: The text to search for
             agent_id: Optional agent ID to filter by
-            limit: Maximum number of results to return
-            threshold: Minimum similarity score (0-1, higher is more similar)
+            limit: Maximum number of results to return (per query variation)
+            threshold: Initial similarity threshold (0-1, higher is more similar)
+            min_results: Minimum number of results to return when using adaptive_threshold
+            adaptive_threshold: If True, gradually lower threshold until min_results is met
+            use_semantic_expansion: If True, generate variations of the query
             filters: Additional filters to apply
             
         Returns:
-            List of Memory objects with similarity scores
+            List of Memory objects with similarity scores, deduplicated and sorted by similarity
         """
+        if not use_semantic_expansion:
+            return self._recall_with_adaptive_threshold(
+                query=query,
+                threshold=threshold,
+                min_results=min_results,
+                adaptive_threshold=adaptive_threshold,
+                agent_id=agent_id,
+                limit=limit,
+                filters=filters
+            )
+        
+        # Generate query variations
+        variations = self._expand_query(query)
+        all_results = []
+        
+        # Search with each variation
+        for variation in variations:
+            results = self._recall_with_threshold(  # Use _recall_with_threshold directly
+                query=variation,
+                threshold=threshold,
+                agent_id=agent_id,
+                limit=limit,
+                filters=filters
+            )
+            all_results.extend(results)
+        
+        # Deduplicate by memory ID, keeping highest similarity score
+        seen_ids = {}
+        for memory in all_results:
+            if memory.id not in seen_ids or (memory.similarity or 0) > (seen_ids[memory.id].similarity or 0):
+                seen_ids[memory.id] = memory
+        
+        # Sort by similarity and return top results
+        deduplicated_results = list(seen_ids.values())
+        deduplicated_results.sort(key=lambda x: x.similarity or 0, reverse=True)
+        
+        # If we don't have enough results and adaptive threshold is enabled, try lowering the threshold
+        if adaptive_threshold and len(deduplicated_results) < min_results:
+            current_threshold = threshold - 0.05  # Start from a lower threshold
+            min_threshold = 0.3
+            
+            while current_threshold >= min_threshold and len(deduplicated_results) < min_results:
+                for variation in variations:
+                    results = self._recall_with_threshold(
+                        query=variation,
+                        threshold=current_threshold,
+                        agent_id=agent_id,
+                        limit=limit,
+                        filters=filters
+                    )
+                    
+                    # Add new results to seen_ids if they have better similarity
+                    for memory in results:
+                        if memory.id not in seen_ids or (memory.similarity or 0) > (seen_ids[memory.id].similarity or 0):
+                            seen_ids[memory.id] = memory
+                
+                deduplicated_results = list(seen_ids.values())
+                deduplicated_results.sort(key=lambda x: x.similarity or 0, reverse=True)
+                
+                if len(deduplicated_results) >= min_results:
+                    break
+                    
+                current_threshold -= 0.05
+        
+        return deduplicated_results[:limit]
+
+    def _recall_with_adaptive_threshold(
+        self,
+        query: str,
+        threshold: float,
+        min_results: int,
+        adaptive_threshold: bool,
+        agent_id: Optional[str] = None,
+        limit: int = 10,
+        filters: Optional[Dict] = None
+    ) -> List[Memory]:
+        """Internal method to perform recall with adaptive threshold."""
+        if not adaptive_threshold:
+            return self._recall_with_threshold(
+                query=query,
+                threshold=threshold,
+                agent_id=agent_id,
+                limit=limit,
+                filters=filters
+            )
+        
+        # Start with high threshold and gradually lower it
+        current_threshold = threshold
+        min_threshold = 0.3  # Don't go below this to avoid irrelevant matches
+        step = 0.05
+        
+        results = []
+        while current_threshold >= min_threshold:
+            current_results = self._recall_with_threshold(
+                query=query,
+                threshold=current_threshold,
+                agent_id=agent_id,
+                limit=limit,
+                filters=filters
+            )
+            
+            # Add new results that aren't already in the list
+            for result in current_results:
+                if not any(r.id == result.id for r in results):
+                    results.append(result)
+            
+            if len(results) >= min_results:
+                break
+                
+            current_threshold -= step
+        
+        # Sort by similarity and return
+        results.sort(key=lambda x: x.similarity or 0, reverse=True)
+        return results[:limit]
+
+    def _recall_with_threshold(
+        self,
+        query: str,
+        threshold: float,
+        agent_id: Optional[str] = None,
+        limit: int = 10,
+        filters: Optional[Dict] = None
+    ) -> List[Memory]:
+        """Internal method to perform recall with a specific threshold."""
         # Create embedding for the query
         embedding_str = f"[{','.join(str(x) for x in self._create_embedding(query))}]"
         
