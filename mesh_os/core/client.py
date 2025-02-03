@@ -247,13 +247,13 @@ class MeshOS:
             $query_embedding: vector!,
             $match_threshold: float8!,
             $match_count: Int!,
-            $filter_agent_id: uuid
+            $agent_id: uuid
         ) {
             search_memories(
                 query_embedding: $query_embedding,
                 match_threshold: $match_threshold,
                 match_count: $match_count,
-                filter_agent_id: $filter_agent_id
+                filter_agent_id: $agent_id
             ) {
                 id
                 agent_id
@@ -272,7 +272,7 @@ class MeshOS:
             "query_embedding": embedding_str,
             "match_threshold": threshold,
             "match_count": limit,
-            "filter_agent_id": agent_id
+            "agent_id": agent_id
         })
         
         # Convert results to Memory objects
