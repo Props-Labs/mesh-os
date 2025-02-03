@@ -191,6 +191,9 @@ class MeshOS:
         # Create embedding
         embedding = self._create_embedding(content)
         
+        # Convert embedding to string format that Hasura expects for vector type
+        embedding_str = f"[{','.join(str(x) for x in embedding)}]"
+        
         # Convert metadata to dict for storage
         metadata_dict = metadata.model_dump()
         
@@ -216,7 +219,7 @@ class MeshOS:
             "content": content,
             "agent_id": agent_id,
             "metadata": metadata_dict,
-            "embedding": embedding
+            "embedding": embedding_str
         })
         memory_data = result["data"]["insert_memories_one"]
         

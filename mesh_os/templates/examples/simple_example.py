@@ -21,6 +21,7 @@ def main():
         # Create an agent
         print("Creating agent...")
         agent = client.create_agent(
+            id="test-agent",
             name="TestAgent",
             description="A test agent",
             metadata={"role": "example"}

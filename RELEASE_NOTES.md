@@ -1,3 +1,9 @@
+# MeshOS v0.1.1 - Bug Fix Release
+
+## Changes
+- 🐛 Fixed vector type formatting issue in memory storage
+- 🔧 Improved compatibility with Hasura's vector type expectations
+
 # MeshOS v0.1.0 - Initial Release
 
 MeshOS is a lightweight multi-agent memory system for business, complete with vector search capabilities, built on PostgreSQL and Hasura.
