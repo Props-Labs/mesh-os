@@ -63,37 +63,46 @@ CREATE TRIGGER update_memories_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Create function for vector similarity search
-CREATE OR REPLACE FUNCTION search_memories(
-    query_vector vector(1536),
-    similarity_threshold float8 DEFAULT 0.7,
-    max_results integer DEFAULT 10,
-    agent_id uuid DEFAULT NULL
+-- Create a view for memories with similarity
+CREATE OR REPLACE VIEW public.memories_with_similarity AS
+SELECT 
+    m.*,
+    0::float8 as similarity  -- Default similarity, will be replaced in search
+FROM memories m;
+
+-- Create the search function that returns the view type
+CREATE OR REPLACE FUNCTION public.search_memories(
+    query_embedding vector(1536),
+    match_threshold float8,
+    match_count integer,
+    filter_agent_id uuid DEFAULT NULL
 )
-RETURNS TABLE (
-    id UUID,
-    agent_id UUID,
-    content TEXT,
-    metadata JSONB,
-    similarity float8
-) AS $$
-BEGIN
-    RETURN QUERY
+RETURNS SETOF public.memories_with_similarity
+LANGUAGE sql
+STABLE
+AS $$
     SELECT 
         m.id,
         m.agent_id,
         m.content,
         m.metadata,
-        1 - (m.embedding <=> query_vector) as similarity
-    FROM public.memories m
-    WHERE 
-        m.embedding IS NOT NULL
-        AND (agent_id IS NULL OR m.agent_id = agent_id)
-        AND 1 - (m.embedding <=> query_vector) > similarity_threshold
-    ORDER BY m.embedding <=> query_vector
-    LIMIT max_results;
-END;
-$$ LANGUAGE plpgsql STABLE;
+        m.embedding,
+        m.created_at,
+        m.updated_at,
+        1 - (m.embedding <=> query_embedding) as similarity
+    FROM memories m
+    WHERE
+        CASE 
+            WHEN filter_agent_id IS NOT NULL THEN m.agent_id = filter_agent_id
+            ELSE TRUE
+        END
+        AND 1 - (m.embedding <=> query_embedding) >= match_threshold
+    ORDER BY m.embedding <=> query_embedding
+    LIMIT match_count;
+$$;
+
+-- Track the function in Hasura
+COMMENT ON FUNCTION public.search_memories IS E'@graphql({"type": "Query"})';
 
 -- Create function to get connected memories
 CREATE OR REPLACE FUNCTION get_connected_memories(

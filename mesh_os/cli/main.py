@@ -555,32 +555,83 @@ def up():
         with console.status("[bold]Applying SQL migrations...", spinner="dots"):
             migration_file = Path("hasura/migrations/default/1_init/up.sql")
             if migration_file.exists():
+                console.print(f"[blue]Found migration file:[/] {migration_file}")
+                
                 # First create the hdb_catalog schema if it doesn't exist
-                subprocess.run(
+                schema_result = subprocess.run(
                     ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c", 
                      "CREATE SCHEMA IF NOT EXISTS hdb_catalog;"],
                     check=True,
-                    capture_output=True  # Capture output to prevent noise
+                    capture_output=True,
+                    text=True
                 )
+                if schema_result.returncode != 0:
+                    console.print("[red]Error creating hdb_catalog schema:[/]")
+                    console.print(schema_result.stderr)
+                    return
                 
-                # Then run the migrations by passing the file directly
+                # Run the migrations
+                console.print("[blue]Applying SQL migrations...[/]")
+                
+                # First show the SQL that will be executed
+                console.print("[blue]Migration SQL preview:[/]")
+                console.print(migration_file.read_text())
+                
+                # Run the migrations with verbose output
                 result = subprocess.run(
-                    f"cat {migration_file} | docker compose exec -T postgres psql -U postgres -d mesh_os",
-                    shell=True,
+                    ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", 
+                     "-v", "ON_ERROR_STOP=1", "-a"],
+                    input=migration_file.read_text(),
+                    shell=False,
                     capture_output=True,
                     text=True
                 )
                 
+                # Always show the output for debugging
+                if result.stdout:
+                    console.print("[blue]Migration output:[/]")
+                    console.print(result.stdout)
+                
+                if result.stderr:
+                    console.print("[yellow]Migration warnings/errors:[/]")
+                    console.print(result.stderr)
+                
                 if result.returncode != 0:
-                    console.print("[red]Error applying SQL migrations:[/]")
-                    if result.stderr:
-                        console.print(result.stderr)
-                    if result.stdout:
-                        console.print(result.stdout)
+                    console.print("[red]Error applying SQL migrations[/]")
                     return
-                console.print("[green]✓[/] SQL migrations applied successfully")
+                
+                # Verify the function was created
+                verify_result = subprocess.run(
+                    ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c",
+                     "SELECT proname, proargnames FROM pg_proc WHERE proname = 'search_memories';"],
+                    capture_output=True,
+                    text=True
+                )
+                
+                if "search_memories" not in verify_result.stdout:
+                    console.print("[red]Warning:[/] search_memories function was not found after migration")
+                    console.print("[blue]Attempting to verify what went wrong...[/]")
+                    
+                    # Check if the function exists with different parameters
+                    check_func = subprocess.run(
+                        ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c",
+                         "\\df search_memories"],
+                        capture_output=True,
+                        text=True
+                    )
+                    console.print("[yellow]Function details:[/]")
+                    console.print(check_func.stdout)
+                else:
+                    console.print("[green]✓[/] search_memories function created successfully")
+                
+                # Verify Hasura tracking
+                console.print("[blue]Verifying Hasura function tracking...[/]")
+                
+                # Run the migrations
+                console.print("[green]✓[/] SQL migrations completed")
             else:
-                console.print("[yellow]Warning:[/] No SQL migrations found at", migration_file)
+                console.print("[red]Error:[/] No SQL migrations found at", migration_file)
+                return
         
         # Apply Hasura metadata
         with console.status("[bold]Applying Hasura metadata...", spinner="dots"):
@@ -664,6 +715,28 @@ def up():
                                 "source": "default",
                                 "schema": "public",
                                 "name": "memory_edges"
+                            }
+                        },
+                        {
+                            "type": "pg_track_table",
+                            "args": {
+                                "source": "default",
+                                "schema": "public",
+                                "name": "memories_with_similarity"
+                            }
+                        },
+                        {
+                            "type": "pg_track_function",
+                            "args": {
+                                "function": {
+                                    "schema": "public",
+                                    "name": "search_memories"
+                                },
+                                "source": "default",
+                                "configuration": {
+                                    "exposed_as": "query"
+                                },
+                                "comment": "Function for semantic search of memories with similarity scores"
                             }
                         },
                         {
@@ -765,6 +838,28 @@ def up():
                                 "source": "default",
                                 "using": {
                                     "foreign_key_constraint_on": "target_memory"
+                                }
+                            }
+                        },
+                        {
+                            "type": "pg_create_object_relationship",
+                            "args": {
+                                "table": {
+                                    "schema": "public",
+                                    "name": "memories_with_similarity"
+                                },
+                                "name": "agent",
+                                "source": "default",
+                                "using": {
+                                    "manual_configuration": {
+                                        "remote_table": {
+                                            "schema": "public",
+                                            "name": "agents"
+                                        },
+                                        "column_mapping": {
+                                            "agent_id": "id"
+                                        }
+                                    }
                                 }
                             }
                         }

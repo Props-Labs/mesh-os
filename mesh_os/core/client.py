@@ -238,45 +238,51 @@ class MeshOS:
         filters: Optional[Dict] = None
     ) -> List[Memory]:
         """Search memories by semantic similarity."""
-        embedding = self._create_embedding(query)
+        # Create embedding for the query
+        embedding_str = f"[{','.join(str(x) for x in self._create_embedding(query))}]"
         
-        # Build where clause
-        where = {}
-        if agent_id:
-            where["agent_id"] = {"_eq": agent_id}
-        if filters:
-            for key, value in filters.items():
-                if isinstance(value, dict):
-                    where[key] = value
-                else:
-                    where[key] = {"_eq": value}
-        
+        # Construct the query
         query = """
-        query SearchMemories($embedding: vector!, $where: memories_bool_exp, $limit: Int!) {
-          search_memories(
-            args: {
-              query_embedding: $embedding,
-              match_threshold: 0.7,
-              match_count: $limit
-            },
-            where: $where
-          ) {
-            id
-            agent_id
-            content
-            metadata
-            embedding
-            created_at
-            updated_at
-          }
+        query SearchMemories(
+            $query_embedding: vector!,
+            $match_threshold: float8!,
+            $match_count: Int!,
+            $filter_agent_id: uuid
+        ) {
+            search_memories(
+                query_embedding: $query_embedding,
+                match_threshold: $match_threshold,
+                match_count: $match_count,
+                filter_agent_id: $filter_agent_id
+            ) {
+                id
+                agent_id
+                content
+                metadata
+                embedding
+                similarity
+                created_at
+                updated_at
+            }
         }
         """
+        
+        # Execute the query
         result = self._execute_query(query, {
-            "embedding": embedding,
-            "where": where,
-            "limit": limit
+            "query_embedding": embedding_str,
+            "match_threshold": threshold,
+            "match_count": limit,
+            "filter_agent_id": agent_id
         })
-        return [Memory(**m) for m in result["data"]["search_memories"]]
+        
+        # Convert results to Memory objects
+        memories = []
+        for m in result["data"]["search_memories"]:
+            # Remove similarity from the dict before creating Memory object
+            similarity = m.pop("similarity", None)
+            memories.append(Memory(**m))
+        
+        return memories
     
     def forget(self, memory_id: str) -> bool:
         """Delete a specific memory."""

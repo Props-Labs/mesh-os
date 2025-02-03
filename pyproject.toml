@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "mesh-os"
-version = "0.1.1"
+version = "0.1.2"
 description = "MeshOS - A lightweight multi-agent memory system with semantic search"
-authors = ["Calvin Hoenes <calvin@os.app>"]
+authors = ["Calvin Hoenes <calvin@props.app>"]
 readme = "README.md"
 packages = [{include = "mesh_os"}]
 repository = "https://github.com/Props-Labs/mesh-os"
