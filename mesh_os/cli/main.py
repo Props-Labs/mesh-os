@@ -734,7 +734,13 @@ def up():
                                 },
                                 "source": "default",
                                 "configuration": {
-                                    "exposed_as": "query"
+                                    "exposed_as": "query",
+                                    "arguments": [
+                                        {
+                                            "name": "args",
+                                            "type": "search_memories_args!"
+                                        }
+                                    ]
                                 },
                                 "comment": "Function for semantic search of memories with similarity scores"
                             }

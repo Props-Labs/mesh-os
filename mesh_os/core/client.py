@@ -244,16 +244,10 @@ class MeshOS:
         # Construct the query
         query = """
         query SearchMemories(
-            $query_embedding: vector!,
-            $match_threshold: float8!,
-            $match_count: Int!,
-            $agent_id: uuid
+            $args: search_memories_args!
         ) {
             search_memories(
-                query_embedding: $query_embedding,
-                match_threshold: $match_threshold,
-                match_count: $match_count,
-                filter_agent_id: $agent_id
+                args: $args
             ) {
                 id
                 agent_id
@@ -269,10 +263,12 @@ class MeshOS:
         
         # Execute the query
         result = self._execute_query(query, {
-            "query_embedding": embedding_str,
-            "match_threshold": threshold,
-            "match_count": limit,
-            "agent_id": agent_id
+            "args": {
+                "query_embedding": embedding_str,
+                "match_threshold": threshold,
+                "match_count": limit,
+                "filter_agent_id": agent_id
+            }
         })
         
         # Convert results to Memory objects
