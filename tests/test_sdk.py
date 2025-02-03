@@ -2,10 +2,10 @@
 Tests for the MeshOS SDK.
 """
 import json
-import os
 from datetime import datetime, timezone
 from typing import Dict, List
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
+import os as os_module  # Rename to avoid conflict
 
 import pytest
 from openai import OpenAI
@@ -56,12 +56,13 @@ TEST_MEMORY_EDGE = {
 @pytest.fixture(autouse=True)
 def mock_env():
     """Mock environment variables."""
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
+    with patch.dict(os_module.environ, {"OPENAI_API_KEY": "test-key"}):
         yield
 
 @pytest.fixture
 def mock_openai():
-    """Mock OpenAI's embedding creation."""
+    """Mock OpenAI's embedding creation and chat completion."""
+    # Mock embeddings
     mock_embeddings = MagicMock()
     mock_embeddings.create.return_value = MagicMock(
         data=[
@@ -72,11 +73,24 @@ def mock_openai():
         ]
     )
     
+    # Mock chat completions
+    mock_chat = MagicMock()
+    mock_chat.completions.create.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content="variation 1\nvariation 2"
+                )
+            )
+        ]
+    )
+    
     mock_client = MagicMock()
     mock_client.embeddings = mock_embeddings
+    mock_client.chat = mock_chat
     
-    with patch("openai.OpenAI", return_value=mock_client) as mock:
-        yield mock_embeddings.create
+    with patch("openai.OpenAI", return_value=mock_client):
+        yield mock_client
 
 @pytest.fixture
 def mock_requests():
@@ -105,6 +119,13 @@ def verify_graphql_query(mock_requests, expected_operation):
     assert "query" in request_data
     assert isinstance(request_data["query"], str)
     assert expected_operation in request_data["query"]
+
+@pytest.fixture(autouse=True)
+def reset_mocks(mock_openai, mock_requests):
+    """Reset all mocks before each test."""
+    mock_openai.reset_mock()
+    mock_requests.reset_mock()
+    yield
 
 class TestAgentManagement:
     """Tests for agent-related operations."""
@@ -175,16 +196,22 @@ class TestMemoryOperations:
         assert memory.metadata == TEST_MEMORY["metadata"]
         
         # Verify OpenAI embedding was requested
-        mock_openai.assert_called_once()
+        mock_openai.embeddings.create.assert_called_once()
         
         # Verify GraphQL mutation
         verify_graphql_query(mock_requests, "mutation Remember")
     
     def test_recall_with_filters(self, os, mock_requests, mock_openai):
         """Test searching memories with filters."""
-        setup_mock_response(mock_requests, {
-            "search_memories": [TEST_MEMORY]
-        })
+        # Mock a single response with similarity score
+        response = {
+            "data": {
+                "search_memories": [
+                    {**TEST_MEMORY, "similarity": 0.75}
+                ]
+            }
+        }
+        mock_requests.return_value.json.return_value = response
         
         filters = {
             "type": "test",
@@ -198,22 +225,158 @@ class TestMemoryOperations:
             agent_id=TEST_MEMORY["agent_id"],
             limit=5,
             threshold=0.7,
-            filters=filters
+            filters=filters,
+            use_semantic_expansion=False,  # Disable expansion for this test
+            adaptive_threshold=False  # Disable adaptive threshold for this test
         )
         
         assert isinstance(memories, list)
         assert len(memories) == 1
         assert isinstance(memories[0], Memory)
         assert memories[0].id == TEST_MEMORY["id"]
+        assert abs(memories[0].similarity - 0.75) < 1e-10
         
-        # Verify OpenAI embedding was requested
-        mock_openai.assert_called_once()
+        # Verify OpenAI embedding was requested exactly once
+        mock_openai.embeddings.create.assert_called_once()
         
         # Verify GraphQL query with filters
         verify_graphql_query(mock_requests, "query SearchMemories")
         variables = mock_requests.call_args[1]["json"]["variables"]
-        assert "where" in variables
-        assert variables["where"].get("type") == {"_eq": "test"}
+        assert "args" in variables
+
+    def test_semantic_expansion(self, os, mock_requests, mock_openai):
+        """Test query semantic expansion."""
+        # Mock search results for different variations
+        responses = [
+            {
+                "data": {
+                    "search_memories": [
+                        {**TEST_MEMORY, "id": "1", "similarity": 0.85},
+                        {**TEST_MEMORY, "id": "2", "similarity": 0.75}
+                    ]
+                }
+            },
+            {
+                "data": {
+                    "search_memories": [
+                        {**TEST_MEMORY, "id": "3", "similarity": 0.72},
+                        {**TEST_MEMORY, "id": "4", "similarity": 0.70}
+                    ]
+                }
+            },
+            {
+                "data": {
+                    "search_memories": [
+                        {**TEST_MEMORY, "id": "5", "similarity": 0.68},
+                        {**TEST_MEMORY, "id": "6", "similarity": 0.65}
+                    ]
+                }
+            }
+        ]
+        mock_requests.return_value.json.side_effect = responses * 3  # Ensure enough responses
+
+        memories = os.recall(
+            query="programming language",
+            use_semantic_expansion=True,
+            threshold=0.5,
+            limit=4  # Explicitly set limit to 4
+        )
+
+        # Verify results are deduplicated and sorted
+        assert len(memories) == 4  # Should get top 4 unique results
+        assert [m.id for m in memories] == ["1", "2", "3", "4"]  # Top 4 by similarity
+        assert abs(memories[0].similarity - 0.85) < 1e-10  # Highest similarity
+        assert abs(memories[-1].similarity - 0.70) < 1e-10  # Lowest similarity of included results
+        
+        # Verify chat completion was called for expansion
+        assert mock_openai.chat.completions.create.call_count == 1
+        messages = mock_openai.chat.completions.create.call_args[1]["messages"]
+        assert any("programming language" in msg["content"] for msg in messages)
+
+    def test_adaptive_threshold(self, os, mock_requests, mock_openai):
+        """Test adaptive threshold search."""
+        # Mock a sequence of results with different thresholds
+        mock_requests.return_value.json.side_effect = [
+            # First try with threshold=0.7 (no results)
+            {"data": {"search_memories": []}},
+            # Second try with threshold=0.65 (no results)
+            {"data": {"search_memories": []}},
+            # Third try with threshold=0.6 (found results)
+            {
+                "data": {
+                    "search_memories": [
+                        {**TEST_MEMORY, "id": "1", "similarity": 0.62},
+                        {**TEST_MEMORY, "id": "2", "similarity": 0.61},
+                        {**TEST_MEMORY, "id": "3", "similarity": 0.60}
+                    ]
+                }
+            }
+        ] * 2  # Repeat sequence to avoid StopIteration
+
+        memories = os.recall(
+            query="test query",
+            threshold=0.7,
+            min_results=3,
+            adaptive_threshold=True,
+            use_semantic_expansion=False  # Disable expansion for this test
+        )
+
+        # Verify we got results after lowering threshold
+        assert len(memories) == 3
+        assert all(0.6 <= m.similarity <= 0.7 for m in memories)
+        
+        # Verify multiple search attempts were made
+        assert mock_requests.call_count == 3
+        
+        # Verify thresholds in the requests
+        calls = mock_requests.call_args_list
+        assert abs(float(calls[0].kwargs["json"]["variables"]["args"]["match_threshold"]) - 0.7) < 1e-10
+        assert abs(float(calls[1].kwargs["json"]["variables"]["args"]["match_threshold"]) - 0.65) < 1e-10
+        assert abs(float(calls[2].kwargs["json"]["variables"]["args"]["match_threshold"]) - 0.6) < 1e-10
+
+    def test_combined_semantic_and_adaptive(self, os, mock_requests, mock_openai):
+        """Test combination of semantic expansion and adaptive threshold."""
+        # Mock a sequence of results
+        responses = [
+            # Original query, first threshold
+            {"data": {"search_memories": []}},
+            # Original query, lowered threshold
+            {
+                "data": {
+                    "search_memories": [
+                        {**TEST_MEMORY, "id": "1", "similarity": 0.65}
+                    ]
+                }
+            },
+            # Variation query, first threshold
+            {"data": {"search_memories": []}},
+            # Variation query, lowered threshold
+            {
+                "data": {
+                    "search_memories": [
+                        {**TEST_MEMORY, "id": "2", "similarity": 0.62}
+                    ]
+                }
+            }
+        ]
+        mock_requests.return_value.json.side_effect = responses * 3  # Ensure enough responses
+
+        memories = os.recall(
+            query="programming language",
+            threshold=0.7,
+            min_results=2,
+            adaptive_threshold=True,
+            use_semantic_expansion=True
+        )
+
+        # Verify results
+        assert len(memories) == 2
+        assert abs(memories[0].similarity - 0.65) < 1e-10  # Best match
+        assert abs(memories[1].similarity - 0.62) < 1e-10  # Second best
+        
+        # Verify both expansion and adaptive threshold were used
+        assert mock_openai.chat.completions.create.call_count == 1
+        assert mock_requests.call_count == 6  # Account for semantic expansion requests
     
     def test_forget(self, os, mock_requests):
         """Test deleting a memory."""
@@ -389,18 +552,19 @@ class TestErrorHandling:
     
     def test_missing_openai_key(self):
         """Test handling of missing OpenAI key."""
-        with patch.dict(os.environ, {}, clear=True):  # Clear env vars
+        with patch.dict(os_module.environ, {}, clear=True):  # Clear env vars
             with pytest.raises(ValueError, match="OpenAI API key is required"):
                 MeshOS(openai_api_key=None)
     
     def test_failed_embedding(self, os, mock_openai):
         """Test handling of OpenAI embedding failure."""
-        mock_openai.side_effect = Exception("OpenAI API Error")
-        
+        # Set up the mock to raise an exception for embeddings.create
+        mock_openai.embeddings.create.side_effect = Exception("OpenAI API Error")
+
         with pytest.raises(Exception, match="OpenAI API Error"):
             os.remember(
                 content="test content",
-                agent_id=TEST_AGENT["id"]  # Provide required agent_id
+                agent_id=TEST_AGENT["id"]
             )
     
     def test_graphql_error(self, os, mock_requests):

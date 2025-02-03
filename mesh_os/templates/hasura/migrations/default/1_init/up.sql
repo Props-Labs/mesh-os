@@ -70,7 +70,38 @@ SELECT
     0::float8 as similarity  -- Default similarity, will be replaced in search
 FROM memories m;
 
--- Create the search function that returns the view type
+-- Add function to normalize embeddings
+CREATE OR REPLACE FUNCTION normalize_embedding()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.embedding IS NOT NULL THEN
+        -- Normalize the embedding vector using l2_normalize
+        NEW.embedding = l2_normalize(NEW.embedding);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger to normalize embeddings on insert and update
+CREATE TRIGGER normalize_memory_embedding
+    BEFORE INSERT OR UPDATE OF embedding ON public.memories
+    FOR EACH ROW
+    EXECUTE FUNCTION normalize_embedding();
+
+-- Add a debug function to check vector normalization
+CREATE OR REPLACE FUNCTION debug_vector_info(v vector(1536)) 
+RETURNS TABLE (
+    original_norm float8,
+    normalized_norm float8,
+    is_normalized boolean
+) AS $$
+    SELECT 
+        sqrt(v <-> v) as original_norm,
+        sqrt(l2_normalize(v) <-> l2_normalize(v)) as normalized_norm,
+        abs(1 - sqrt(v <-> v)) < 0.000001 as is_normalized;
+$$ LANGUAGE SQL IMMUTABLE;
+
+-- Modify the search function to work with normalized embeddings
 CREATE OR REPLACE FUNCTION public.search_memories(
     query_embedding vector(1536),
     match_threshold float8,
@@ -81,6 +112,9 @@ RETURNS SETOF public.memories_with_similarity
 LANGUAGE sql
 STABLE
 AS $$
+    WITH normalized_query AS (
+        SELECT l2_normalize(query_embedding) AS normalized_vector
+    )
     SELECT 
         m.id,
         m.agent_id,
@@ -89,15 +123,16 @@ AS $$
         m.embedding,
         m.created_at,
         m.updated_at,
-        1 - (m.embedding <=> query_embedding) as similarity
+        -(m.embedding <#> (SELECT normalized_vector FROM normalized_query)) as similarity
     FROM memories m
     WHERE
         CASE 
             WHEN filter_agent_id IS NOT NULL THEN m.agent_id = filter_agent_id
             ELSE TRUE
         END
-        AND 1 - (m.embedding <=> query_embedding) >= match_threshold
-    ORDER BY m.embedding <=> query_embedding
+        -- Re-enable threshold with corrected sign
+        AND -(m.embedding <#> (SELECT normalized_vector FROM normalized_query)) >= match_threshold
+    ORDER BY -(m.embedding <#> (SELECT normalized_vector FROM normalized_query)) DESC
     LIMIT match_count;
 $$;
 
@@ -153,4 +188,21 @@ SELECT DISTINCT
     weight,
     depth
 FROM memory_graph;
+$$ LANGUAGE SQL STABLE;
+
+-- Add a function to inspect memory embeddings
+CREATE OR REPLACE FUNCTION inspect_memory_embeddings()
+RETURNS TABLE (
+    memory_id UUID,
+    content TEXT,
+    embedding_norm float8,
+    is_normalized boolean
+) AS $$
+    SELECT 
+        id,
+        content,
+        sqrt(embedding <-> embedding) as embedding_norm,
+        abs(1 - sqrt(embedding <-> embedding)) < 0.000001 as is_normalized
+    FROM memories
+    WHERE embedding IS NOT NULL;
 $$ LANGUAGE SQL STABLE; 
