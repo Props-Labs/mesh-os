@@ -233,6 +233,49 @@ def unregister(agent_id: str):
         console.print(f"[red]Error:[/] {str(e)}")
         raise click.ClickException(str(e))
 
+@agent.command()
+@click.argument("identifier")
+@click.argument("status")
+def update_status(identifier: str, status: str):
+    """Update an agent's status by ID or slug.
+    
+    Valid statuses: active, inactive, error
+    """
+    try:
+        client = get_client()
+        # Try to get agent by slug first
+        agent = None
+        try:
+            agent = client.get_agent_by_slug(identifier)
+        except InvalidSlugError:
+            # Not a valid slug, try UUID
+            try:
+                identifier = validate_uuid(None, None, identifier)
+            except click.BadParameter as e:
+                console.print(f"[red]Error:[/] {str(e)}")
+                raise click.ClickException("Agent ID must be a valid UUID or slug")
+        
+        if not agent:
+            # If we got here, we have a valid UUID but need to check if agent exists
+            agent = client.get_agent(identifier)
+            if not agent:
+                console.print(f"[red]Error:[/] Agent {identifier} not found")
+                raise click.ClickException("Agent not found")
+        
+        # Validate status
+        valid_statuses = ["active", "inactive", "error"]
+        if status.lower() not in valid_statuses:
+            console.print(f"[red]Error:[/] Invalid status. Must be one of: {', '.join(valid_statuses)}")
+            raise click.ClickException("Invalid status")
+        
+        # Update the agent's status
+        updated_agent = client.update_agent_status(agent.id, status.lower())
+        identifier = updated_agent.slug or updated_agent.id
+        console.print(f"[green]✓[/] Agent {identifier} status updated to: {updated_agent.status}")
+    except Exception as e:
+        console.print(f"[red]Error:[/] {str(e)}")
+        raise click.ClickException(str(e))
+
 @cli.group()
 def memory():
     """Manage memories."""

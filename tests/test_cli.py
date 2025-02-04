@@ -191,6 +191,56 @@ class TestAgentCommands:
         assert result.exit_code == 1
         assert "not found" in result.output
 
+    def test_update_agent_status_by_slug(self, runner, mock_client):
+        """Test updating an agent's status using slug."""
+        mock_client.get_agent_by_slug.return_value = MagicMock(**TEST_AGENT)
+        updated_agent = dict(TEST_AGENT)
+        updated_agent["status"] = "inactive"
+        mock_client.update_agent_status.return_value = MagicMock(**updated_agent)
+        
+        result = runner.invoke(cli, ["agent", "update-status", "test-agent", "inactive"])
+        
+        assert result.exit_code == 0
+        assert "status updated to: inactive" in result.output
+        mock_client.get_agent_by_slug.assert_called_once_with("test-agent")
+        mock_client.update_agent_status.assert_called_once_with(TEST_AGENT["id"], "inactive")
+    
+    def test_update_agent_status_by_id(self, runner, mock_client):
+        """Test updating an agent's status using UUID."""
+        mock_client.get_agent_by_slug.return_value = None
+        mock_client.get_agent.return_value = MagicMock(**TEST_AGENT)
+        updated_agent = dict(TEST_AGENT)
+        updated_agent["status"] = "error"
+        mock_client.update_agent_status.return_value = MagicMock(**updated_agent)
+        
+        result = runner.invoke(cli, ["agent", "update-status", TEST_AGENT["id"], "error"])
+        
+        assert result.exit_code == 0
+        assert "status updated to: error" in result.output
+        mock_client.get_agent.assert_called_once_with(TEST_AGENT["id"])
+        mock_client.update_agent_status.assert_called_once_with(TEST_AGENT["id"], "error")
+    
+    def test_update_agent_status_invalid_status(self, runner, mock_client):
+        """Test updating an agent with invalid status."""
+        mock_client.get_agent_by_slug.return_value = MagicMock(**TEST_AGENT)
+        
+        result = runner.invoke(cli, ["agent", "update-status", "test-agent", "invalid"])
+        
+        assert result.exit_code == 1
+        assert "Invalid status" in result.output
+        mock_client.update_agent_status.assert_not_called()
+    
+    def test_update_agent_status_nonexistent_agent(self, runner, mock_client):
+        """Test updating status of nonexistent agent."""
+        mock_client.get_agent_by_slug.return_value = None
+        mock_client.get_agent.return_value = None
+        
+        result = runner.invoke(cli, ["agent", "update-status", "nonexistent-agent", "active"])
+        
+        assert result.exit_code == 1
+        assert "not found" in result.output
+        mock_client.update_agent_status.assert_not_called()
+
 class TestMemoryCommands:
     """Tests for memory-related CLI commands."""
     

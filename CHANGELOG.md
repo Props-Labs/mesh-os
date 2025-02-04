@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2025-02-04
+
+### Added
+- Agent status management
+  - New `update_agent_status` function to update agent status
+  - New CLI command `agent update-status <identifier> <status>` to change agent status
+  - Supported statuses: active, inactive, error
+  - Status updates work with both UUID and slug identifiers
+
+### Changed
+- Enhanced agent status validation in CLI to prevent invalid status values
+- Improved error messages for agent status operations
+
 ## [0.1.7] - 2025-02-04
 
 ### Added

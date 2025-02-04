@@ -239,6 +239,22 @@ class TestAgentManagement:
         agent = os.get_agent_by_slug("nonexistent-agent")
         assert agent is None
     
+    def test_update_agent_status(self, os, mock_requests):
+        """Test updating an agent's status."""
+        updated_agent = dict(TEST_AGENT)
+        updated_agent["status"] = "inactive"
+        setup_mock_response(mock_requests, {
+            "update_agents_by_pk": updated_agent
+        })
+        
+        agent = os.update_agent_status(TEST_AGENT["id"], "inactive")
+        assert isinstance(agent, Agent)
+        assert agent.id == TEST_AGENT["id"]
+        assert agent.status == "inactive"
+        
+        # Verify GraphQL mutation
+        verify_graphql_query(mock_requests.mock_calls[0], "mutation UpdateAgentStatus")
+    
     def test_unregister_agent(self, os, mock_requests):
         """Test unregistering an agent."""
         setup_mock_response(mock_requests, {

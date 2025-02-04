@@ -237,7 +237,42 @@ class MeshOS:
         result = self._execute_query(query, {"id": agent_id})
         agent_data = result["data"]["agents_by_pk"]
         return Agent(**agent_data) if agent_data else None
-    
+
+    def update_agent_status(self, agent_id: str, status: str) -> Agent:
+        """Update an agent's status.
+        
+        Args:
+            agent_id: The ID of the agent to update
+            status: The new status to set (e.g., 'active', 'inactive', 'error')
+            
+        Returns:
+            Agent: The updated agent
+            
+        Raises:
+            GraphQLError: If the agent doesn't exist or the update fails
+        """
+        query = """
+        mutation UpdateAgentStatus($id: uuid!, $status: String!) {
+          update_agents_by_pk(
+            pk_columns: {id: $id}, 
+            _set: {status: $status}
+          ) {
+            id
+            name
+            description
+            metadata
+            status
+            slug
+          }
+        }
+        """
+        result = self._execute_query(query, {
+            "id": agent_id,
+            "status": status
+        })
+        agent_data = result["data"]["update_agents_by_pk"]
+        return Agent(**agent_data)
+
     def remember(
         self,
         content: str,
