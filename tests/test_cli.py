@@ -13,6 +13,7 @@ from click.testing import CliRunner
 
 from mesh_os.cli.main import cli, validate_uuid, validate_metadata, validate_memory_metadata
 from mesh_os.core.taxonomy import DataType, EdgeType, KnowledgeSubtype
+from mesh_os.core.client import InvalidSlugError
 
 # Test data with fixed UUIDs for consistency
 TEST_AGENT = {
@@ -20,7 +21,8 @@ TEST_AGENT = {
     "name": "TestAgent",
     "description": "Test description",
     "metadata": {"capabilities": ["test"]},
-    "status": "active"
+    "status": "active",
+    "slug": "test-agent"  # Add default slug
 }
 
 TEST_MEMORY = {
@@ -138,26 +140,56 @@ class TestAgentCommands:
             "agent", "register",
             "TestAgent",
             "--description", "Test description",
-            "--metadata", json.dumps(TEST_AGENT["metadata"])
+            "--metadata", json.dumps(TEST_AGENT["metadata"]),
+            "--slug", "test-agent"
         ])
         
         assert result.exit_code == 0
         assert "Agent registered" in result.output
+        # Remove any newlines from the output before checking
+        output = result.output.replace("\n", "")
+        assert f"(slug: {TEST_AGENT['slug']})" in output
         mock_client.register_agent.assert_called_once_with(
             "TestAgent",
             "Test description",
-            TEST_AGENT["metadata"]
+            TEST_AGENT["metadata"],
+            "test-agent"
         )
     
-    def test_unregister_agent(self, runner, mock_client):
-        """Test unregistering an agent."""
+    def test_register_agent_invalid_slug(self, runner, mock_client):
+        """Test registering an agent with invalid slug."""
+        mock_client.register_agent.side_effect = InvalidSlugError("Invalid slug format")
+        
+        result = runner.invoke(cli, [
+            "agent", "register",
+            "TestAgent",
+            "--slug", "Invalid Slug"
+        ])
+        
+        assert result.exit_code == 1
+        assert "Invalid slug format" in result.output
+    
+    def test_unregister_agent_by_slug(self, runner, mock_client):
+        """Test unregistering an agent using slug."""
+        mock_client.get_agent_by_slug.return_value = MagicMock(**TEST_AGENT)
         mock_client.unregister_agent.return_value = True
         
-        result = runner.invoke(cli, ["agent", "unregister", TEST_AGENT["id"]])
+        result = runner.invoke(cli, ["agent", "unregister", "test-agent"])
         
         assert result.exit_code == 0
         assert "unregistered" in result.output
+        mock_client.get_agent_by_slug.assert_called_once_with("test-agent")
         mock_client.unregister_agent.assert_called_once_with(TEST_AGENT["id"])
+    
+    def test_unregister_agent_nonexistent_slug(self, runner, mock_client):
+        """Test unregistering an agent with nonexistent slug."""
+        mock_client.get_agent_by_slug.return_value = None
+        mock_client.get_agent.return_value = None
+        
+        result = runner.invoke(cli, ["agent", "unregister", "nonexistent-agent"])
+        
+        assert result.exit_code == 1
+        assert "not found" in result.output
 
 class TestMemoryCommands:
     """Tests for memory-related CLI commands."""
@@ -242,11 +274,17 @@ class TestMemoryEdgeCommands:
 class TestErrorHandling:
     """Tests for CLI error handling."""
     
-    def test_invalid_uuid(self, runner):
+    def test_invalid_uuid(self, runner, mock_client):
         """Test handling of invalid UUIDs."""
-        result = runner.invoke(cli, ["agent", "unregister", "not-a-uuid"])
-        assert result.exit_code != 0
+        # Mock get_agent_by_slug to return None (not found)
+        mock_client.get_agent_by_slug.side_effect = InvalidSlugError("Invalid slug format")
+        
+        result = runner.invoke(cli, ["agent", "unregister", "not-a-uuid"], catch_exceptions=False)
+        assert result.exit_code == 1
         assert "Invalid UUID format" in result.output
+        
+        # Verify that unregister_agent was not called
+        mock_client.unregister_agent.assert_not_called()
     
     def test_invalid_metadata(self, runner, mock_client):
         """Test CLI handling of invalid metadata."""

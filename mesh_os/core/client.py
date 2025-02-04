@@ -3,6 +3,7 @@ Core functionality for MeshOS.
 """
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Union
@@ -17,6 +18,10 @@ from mesh_os.core.taxonomy import (DataType, EdgeMetadata, EdgeType, MemoryMetad
 
 console = Console()
 
+class InvalidSlugError(Exception):
+    """Raised when an invalid slug is provided."""
+    pass
+
 @dataclass
 class Agent:
     """An agent in the system."""
@@ -25,6 +30,7 @@ class Agent:
     description: str
     metadata: Dict
     status: str
+    slug: Optional[str] = None
 
 @dataclass
 class Memory:
@@ -55,6 +61,8 @@ class GraphQLError(Exception):
 
 class MeshOS:
     """MeshOS client for interacting with the system."""
+    
+    SLUG_PATTERN = re.compile(r'^[a-z][a-z0-9_-]*[a-z0-9]$')
     
     def __init__(
         self,
@@ -111,37 +119,95 @@ class MeshOS:
         )
         return response.data[0].embedding
     
+    def _validate_slug(self, slug: str) -> bool:
+        """Validate a slug string."""
+        return bool(self.SLUG_PATTERN.match(slug))
+    
     def register_agent(
         self,
         name: str,
         description: str,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
+        slug: Optional[str] = None
     ) -> Agent:
-        """Register a new agent in the system."""
+        """Register a new agent in the system.
+        
+        Args:
+            name: The agent's display name
+            description: A description of the agent
+            metadata: Optional metadata dictionary
+            slug: Optional unique slug for the agent (must be lowercase with hyphens/underscores)
+            
+        Returns:
+            Agent: The registered agent
+            
+        Raises:
+            InvalidSlugError: If the provided slug is invalid
+            GraphQLError: If an agent with the slug already exists
+        """
+        if slug is not None and not self._validate_slug(slug):
+            raise InvalidSlugError(
+                "Slug must start with a letter and contain only lowercase letters, "
+                "numbers, hyphens, and underscores"
+            )
+        
+        # First check if agent with slug exists
+        if slug:
+            existing = self.get_agent_by_slug(slug)
+            if existing:
+                return existing
+        
         query = """
-        mutation RegisterAgent($name: String!, $description: String!, $metadata: jsonb) {
+        mutation RegisterAgent($name: String!, $description: String!, $metadata: jsonb, $slug: String) {
           insert_agents_one(object: {
             name: $name,
             description: $description,
             metadata: $metadata,
-            status: "active"
+            status: "active",
+            slug: $slug
           }) {
             id
             name
             description
             metadata
             status
+            slug
           }
         }
         """
         result = self._execute_query(query, {
             "name": name,
             "description": description,
-            "metadata": metadata or {}
+            "metadata": metadata or {},
+            "slug": slug
         })
         agent_data = result["data"]["insert_agents_one"]
         return Agent(**agent_data)
     
+    def get_agent_by_slug(self, slug: str) -> Optional[Agent]:
+        """Get agent details by slug."""
+        if not self._validate_slug(slug):
+            raise InvalidSlugError(
+                "Slug must start with a letter and contain only lowercase letters, "
+                "numbers, hyphens, and underscores"
+            )
+        
+        query = """
+        query GetAgentBySlug($slug: String!) {
+          agents(where: {slug: {_eq: $slug}}, limit: 1) {
+            id
+            name
+            description
+            metadata
+            status
+            slug
+          }
+        }
+        """
+        result = self._execute_query(query, {"slug": slug})
+        agents = result["data"]["agents"]
+        return Agent(**agents[0]) if agents else None
+
     def unregister_agent(self, agent_id: str) -> bool:
         """Unregister an agent and remove all their memories."""
         query = """
@@ -164,6 +230,7 @@ class MeshOS:
             description
             metadata
             status
+            slug
           }
         }
         """

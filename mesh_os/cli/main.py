@@ -17,7 +17,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich import print as rprint
 
-from mesh_os.core.client import MeshOS
+from mesh_os.core.client import MeshOS, InvalidSlugError
 from mesh_os.core.taxonomy import (
     DataType, EdgeType, MemoryMetadata, EdgeMetadata,
     ActivitySubtype, KnowledgeSubtype, DecisionSubtype, MediaSubtype
@@ -31,7 +31,7 @@ def validate_uuid(ctx, param, value: str) -> str:
         UUID(value)
         return value
     except ValueError:
-        raise click.BadParameter(f"Invalid UUID format: {value}")
+        raise click.BadParameter(f"Invalid UUID format: {value}", param=param)
 
 def validate_metadata(metadata_str: Optional[str]) -> Optional[Dict[str, Any]]:
     """Parse and validate metadata JSON."""
@@ -179,28 +179,59 @@ def agent():
 @click.argument("name")
 @click.option("--description", "-d", help="Agent description")
 @click.option("--metadata", "-m", help="Agent metadata as JSON")
-def register(name: str, description: Optional[str] = None, metadata: Optional[str] = None):
+@click.option("--slug", "-s", help="Unique slug for the agent (lowercase with hyphens/underscores)")
+def register(name: str, description: Optional[str] = None, metadata: Optional[str] = None, slug: Optional[str] = None):
     """Register a new agent."""
     try:
         client = get_client()
         metadata_dict = validate_metadata(metadata)
-        agent = client.register_agent(name, description, metadata_dict)
-        console.print(f"[green]✓[/] Agent registered with ID: {agent.id}")
+        agent = client.register_agent(name, description, metadata_dict, slug)
+        if agent.slug:
+            console.print(f"[green]✓[/] Agent registered with ID: {agent.id} (slug: {agent.slug})")
+        else:
+            console.print(f"[green]✓[/] Agent registered with ID: {agent.id}")
+    except InvalidSlugError as e:
+        console.print(f"[red]Error:[/] Invalid slug format: {str(e)}")
+        raise click.ClickException(str(e))
     except Exception as e:
         console.print(f"[red]Error:[/] {str(e)}")
+        raise click.ClickException(str(e))
 
 @agent.command()
-@click.argument("agent_id", callback=validate_uuid)
+@click.argument("agent_id")
 def unregister(agent_id: str):
-    """Unregister an agent."""
+    """Unregister an agent by ID or slug."""
     try:
         client = get_client()
-        if client.unregister_agent(agent_id):
-            console.print(f"[green]✓[/] Agent {agent_id} unregistered")
+        # Try to get agent by slug first
+        agent = None
+        try:
+            agent = client.get_agent_by_slug(agent_id)
+        except InvalidSlugError:
+            # Not a valid slug, try UUID
+            try:
+                agent_id = validate_uuid(None, None, agent_id)
+            except click.BadParameter as e:
+                console.print(f"[red]Error:[/] {str(e)}")
+                raise click.ClickException("Agent ID must be a valid UUID or slug")
+        
+        if not agent:
+            # If we got here, we have a valid UUID but need to check if agent exists
+            agent = client.get_agent(agent_id)
+            if not agent:
+                console.print(f"[red]Error:[/] Agent {agent_id} not found")
+                raise click.ClickException("Agent not found")
+        
+        # Now we have a valid agent, unregister it
+        if client.unregister_agent(agent.id):
+            identifier = agent.slug or agent.id
+            console.print(f"[green]✓[/] Agent {identifier} unregistered")
         else:
-            console.print(f"[red]Error:[/] Agent {agent_id} not found")
+            console.print(f"[red]Error:[/] Failed to unregister agent {agent_id}")
+            raise click.ClickException("Failed to unregister agent")
     except Exception as e:
         console.print(f"[red]Error:[/] {str(e)}")
+        raise click.ClickException(str(e))
 
 @cli.group()
 def memory():

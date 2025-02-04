@@ -2,15 +2,25 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "vector";
 
+-- Create function to validate slugs
+CREATE OR REPLACE FUNCTION validate_slug(slug text)
+RETURNS boolean AS $$
+BEGIN
+    RETURN slug ~ '^[a-z][a-z0-9_-]*[a-z0-9]$';
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 -- Create agents table
 CREATE TABLE IF NOT EXISTS public.agents (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    slug TEXT UNIQUE,
     name TEXT NOT NULL,
     description TEXT,
     metadata JSONB,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT valid_slug CHECK (slug IS NULL OR validate_slug(slug))
 );
 
 -- Create memories table
