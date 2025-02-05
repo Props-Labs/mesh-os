@@ -5,7 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.8] - 2025-02-04
+## [0.1.9] - 2025-02-06
+
+### Added
+- Automatic content chunking for large memories
+  - Content exceeding 8192 tokens is automatically split into chunks
+  - Chunks are linked with `follows_up` relationships
+  - Each chunk includes metadata about its position and total chunks
+  - Seamless handling of both single and multi-chunk memories
+
+### Changed
+- `remember` function now returns either a single Memory or List[Memory] depending on chunking
+- Enhanced memory metadata to support chunk information and relationships
+
+## [0.1.8] - 2025-02-05
 
 ### Added
 - Agent status management

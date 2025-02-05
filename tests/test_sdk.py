@@ -306,6 +306,96 @@ class TestMemoryOperations:
         # Verify GraphQL mutation
         verify_graphql_query(mock_requests.mock_calls[0], "mutation Remember")
     
+    def test_remember_with_chunking(self, os, mock_openai, mock_requests):
+        """Test storing a memory that requires chunking."""
+        # Mock the content being large enough to require chunking
+        large_content = "Test content " * 1000  # Large content
+        chunk1 = "Test content " * 500
+        chunk2 = "Test content " * 500
+        
+        # Set up mock responses for both chunks
+        mock_requests.return_value.json.side_effect = [
+            {"data": {"insert_memories_one": {**TEST_MEMORY, "id": "chunk1-id", "content": chunk1}}},
+            {"data": {"insert_memories_one": {**TEST_MEMORY, "id": "chunk2-id", "content": chunk2}}},
+            {"data": {"insert_memory_edges_one": {**TEST_MEMORY_EDGE, "source_memory": "chunk2-id", "target_memory": "chunk1-id"}}}
+        ]
+        
+        # Mock the chunking behavior
+        with patch.object(os, '_chunk_content', return_value=[chunk1, chunk2]):
+            memories = os.remember(
+                content=large_content,
+                agent_id=TEST_AGENT["id"]
+            )
+        
+        # Verify we got back a list of two memories
+        assert isinstance(memories, list)
+        assert len(memories) == 2
+        assert all(isinstance(m, Memory) for m in memories)
+        
+        # Verify the chunks were stored and linked
+        assert mock_requests.call_count == 3  # Two inserts + one edge creation
+        
+        # Get all the calls made to mock_requests
+        calls = mock_requests.mock_calls
+        
+        # Extract the metadata from the first chunk creation call
+        first_chunk_call = calls[0]
+        first_chunk_variables = first_chunk_call[2]['json']['variables']
+        first_chunk_metadata = first_chunk_variables['metadata']
+        
+        # Extract the metadata from the second chunk creation call
+        second_chunk_call = calls[3]
+        second_chunk_variables = second_chunk_call[2]['json']['variables']
+        second_chunk_metadata = second_chunk_variables['metadata']
+        
+        # Verify first chunk metadata
+        assert first_chunk_metadata['chunk_index'] == 0
+        assert first_chunk_metadata['total_chunks'] == 2
+        assert first_chunk_metadata['is_chunk'] is True
+        
+        # Verify second chunk metadata
+        assert second_chunk_metadata['chunk_index'] == 1
+        assert second_chunk_metadata['total_chunks'] == 2
+        assert second_chunk_metadata['is_chunk'] is True
+        assert second_chunk_metadata['previous_chunk'] == 'chunk1-id'
+        
+        # Verify the edge creation call
+        edge_call = calls[6]
+        edge_variables = edge_call[2]['json']['variables']
+        
+        assert edge_variables['source_memory'] == 'chunk2-id'
+        assert edge_variables['target_memory'] == 'chunk1-id'
+        assert edge_variables['relationship'] == 'part_of'
+        assert edge_variables['metadata']['relationship'] == 'part_of'
+        assert edge_variables['metadata']['bidirectional'] is True
+        assert edge_variables['metadata']['additional']['document_sequence'] is True
+        assert edge_variables['metadata']['additional']['sequence_index'] == 1
+    
+    def test_remember_no_chunking_needed(self, os, mock_openai, mock_requests):
+        """Test storing a memory that doesn't require chunking."""
+        # Mock a small content that doesn't need chunking
+        small_content = "Small test content"
+        
+        # Set up mock response
+        setup_mock_response(mock_requests, {
+            "insert_memories_one": TEST_MEMORY
+        })
+        
+        # Mock the chunking behavior to return single chunk
+        with patch.object(os, '_chunk_content', return_value=[small_content]):
+            memory = os.remember(
+                content=small_content,
+                agent_id=TEST_AGENT["id"]
+            )
+        
+        # Verify we got back a single memory
+        assert isinstance(memory, Memory)
+        assert memory.content == TEST_MEMORY["content"]
+        
+        # Verify only one insert was made
+        assert mock_requests.call_count == 1
+        verify_graphql_query(mock_requests.mock_calls[0], "mutation Remember")
+    
     def test_recall_with_filters(self, os, mock_requests, mock_openai):
         """Test searching memories with filters."""
         # Mock a single response with similarity score

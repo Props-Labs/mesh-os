@@ -57,6 +57,7 @@ class EdgeType(str, Enum):
     DEPENDS_ON = "depends_on"  # Prerequisite relationship
     SUMMARIZES = "summarizes"  # Condensed version
     INFLUENCES = "influences"  # Impact relationship
+    PART_OF = "part_of"  # Part of a larger document/content
 
 class RelevanceTag(str, Enum):
     """Relevance classification tags."""

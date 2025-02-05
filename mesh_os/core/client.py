@@ -123,6 +123,51 @@ class MeshOS:
         """Validate a slug string."""
         return bool(self.SLUG_PATTERN.match(slug))
     
+    def _chunk_content(self, content: str, max_tokens: int = 8192) -> List[str]:
+        """Split content into chunks that fit within token limit.
+        
+        Args:
+            content: The text content to chunk
+            max_tokens: Maximum tokens per chunk (default: 8192 for OpenAI embeddings)
+            
+        Returns:
+            List of content chunks
+        """
+        # Use OpenAI's tokenizer to count tokens
+        encoding = self.openai.tiktoken.encoding_for_model("text-embedding-3-small")
+        tokens = encoding.encode(content)
+        
+        if len(tokens) <= max_tokens:
+            return [content]
+        
+        chunks = []
+        current_chunk = []
+        current_length = 0
+        
+        # Split on sentence boundaries when possible
+        sentences = content.split(". ")
+        
+        for sentence in sentences:
+            # Add period back if it was removed by split
+            sentence = sentence + "." if sentence == sentences[-1] else sentence + ". "
+            sentence_tokens = encoding.encode(sentence)
+            
+            if current_length + len(sentence_tokens) > max_tokens:
+                # Current chunk is full, start a new one
+                if current_chunk:
+                    chunks.append("".join(current_chunk))
+                current_chunk = [sentence]
+                current_length = len(sentence_tokens)
+            else:
+                current_chunk.append(sentence)
+                current_length += len(sentence_tokens)
+        
+        # Add the last chunk if there is one
+        if current_chunk:
+            chunks.append("".join(current_chunk))
+        
+        return chunks
+
     def register_agent(
         self,
         name: str,
@@ -278,8 +323,18 @@ class MeshOS:
         content: str,
         agent_id: str,
         metadata: Optional[Union[Dict, MemoryMetadata]] = None
-    ) -> Memory:
-        """Store a new memory."""
+    ) -> Union[Memory, List[Memory]]:
+        """Store a new memory, automatically chunking if content exceeds token limit.
+        
+        Args:
+            content: The text content to store
+            agent_id: The ID of the agent creating the memory
+            metadata: Optional metadata for the memory
+            
+        Returns:
+            Memory or List[Memory]: Single memory if content fits in one chunk,
+            list of linked memories if content was chunked
+        """
         # Convert dict to MemoryMetadata if needed
         if isinstance(metadata, dict):
             metadata = MemoryMetadata(**metadata)
@@ -291,47 +346,122 @@ class MeshOS:
                 version=1
             )
         
-        # Create embedding
-        embedding = self._create_embedding(content)
+        # Chunk the content if needed
+        chunks = self._chunk_content(content)
         
-        # Convert embedding to string format that Hasura expects for vector type
-        embedding_str = f"[{','.join(str(x) for x in embedding)}]"
-        
-        # Convert metadata to dict for storage
-        metadata_dict = metadata.model_dump()
-        
-        query = """
-        mutation Remember($content: String!, $agent_id: uuid!, $metadata: jsonb, $embedding: vector!) {
-          insert_memories_one(object: {
-            content: $content,
-            agent_id: $agent_id,
-            metadata: $metadata,
-            embedding: $embedding
-          }) {
-            id
-            agent_id
-            content
-            metadata
-            embedding
-            created_at
-            updated_at
-          }
-        }
-        """
-        result = self._execute_query(query, {
-            "content": content,
-            "agent_id": agent_id,
-            "metadata": metadata_dict,
-            "embedding": embedding_str
-        })
-        memory_data = result["data"]["insert_memories_one"]
-        
-        # Convert stored metadata back to MemoryMetadata if it's a dict
-        if isinstance(memory_data["metadata"], dict):
-            memory_data["metadata"] = MemoryMetadata(**memory_data["metadata"])
-        
-        return Memory(**memory_data)
-    
+        if len(chunks) == 1:
+            # Single chunk case - proceed as before
+            embedding = self._create_embedding(content)
+            embedding_str = f"[{','.join(str(x) for x in embedding)}]"
+            metadata_dict = metadata.model_dump()
+            
+            query = """
+            mutation Remember($content: String!, $agent_id: uuid!, $metadata: jsonb, $embedding: vector!) {
+              insert_memories_one(object: {
+                content: $content,
+                agent_id: $agent_id,
+                metadata: $metadata,
+                embedding: $embedding
+              }) {
+                id
+                agent_id
+                content
+                metadata
+                embedding
+                created_at
+                updated_at
+              }
+            }
+            """
+            result = self._execute_query(query, {
+                "content": content,
+                "agent_id": agent_id,
+                "metadata": metadata_dict,
+                "embedding": embedding_str
+            })
+            memory_data = result["data"]["insert_memories_one"]
+            
+            # Convert stored metadata back to MemoryMetadata if it's a dict
+            if isinstance(memory_data["metadata"], dict):
+                memory_data["metadata"] = MemoryMetadata(**memory_data["metadata"])
+            
+            return Memory(**memory_data)
+        else:
+            # Multiple chunks case
+            memories = []
+            previous_memory = None
+            
+            for i, chunk in enumerate(chunks):
+                # Update metadata for chunk
+                chunk_metadata = metadata.model_dump()
+                chunk_metadata.update({
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                    "is_chunk": True
+                })
+                if previous_memory:
+                    chunk_metadata["previous_chunk"] = previous_memory.id
+                
+                # Create embedding for chunk
+                embedding = self._create_embedding(chunk)
+                embedding_str = f"[{','.join(str(x) for x in embedding)}]"
+                
+                # Store chunk
+                query = """
+                mutation Remember($content: String!, $agent_id: uuid!, $metadata: jsonb, $embedding: vector!) {
+                  insert_memories_one(object: {
+                    content: $content,
+                    agent_id: $agent_id,
+                    metadata: $metadata,
+                    embedding: $embedding
+                  }) {
+                    id
+                    agent_id
+                    content
+                    metadata
+                    embedding
+                    created_at
+                    updated_at
+                  }
+                }
+                """
+                result = self._execute_query(query, {
+                    "content": chunk,
+                    "agent_id": agent_id,
+                    "metadata": chunk_metadata,
+                    "embedding": embedding_str
+                })
+                memory_data = result["data"]["insert_memories_one"]
+                
+                # Convert stored metadata back to MemoryMetadata
+                if isinstance(memory_data["metadata"], dict):
+                    memory_data["metadata"] = MemoryMetadata(**memory_data["metadata"])
+                
+                memory = Memory(**memory_data)
+                memories.append(memory)
+                
+                # Link to previous chunk if it exists
+                if previous_memory:
+                    self.link_memories(
+                        source_memory_id=memory.id,  # Current chunk points to the previous one
+                        target_memory_id=previous_memory.id,
+                        relationship=EdgeType.PART_OF,
+                        weight=1.0,
+                        metadata=EdgeMetadata(
+                            relationship=EdgeType.PART_OF,
+                            weight=1.0,
+                            bidirectional=True,  # Both chunks are part of the same document
+                            additional={
+                                "document_sequence": True,
+                                "sequence_index": i
+                            }
+                        )
+                    )
+                
+                previous_memory = memory
+            
+            return memories
+
     def _expand_query(self, query: str, num_variations: int = 2) -> List[str]:
         """Generate semantic variations of the query.
         
