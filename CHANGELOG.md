@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.9] - 2025-02-06
+## [0.1.9] - 2025-02-05
 
 ### Added
 - Automatic content chunking for large memories
@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Chunks are linked with `follows_up` relationships
   - Each chunk includes metadata about its position and total chunks
   - Seamless handling of both single and multi-chunk memories
+- Enhanced metadata filtering support in `search_memories`:
+  - Exact value matching for numeric fields in metadata
+  - Nested object matching in metadata
+  - Array containment operations with `_contains` operator
+  - Full support for deep nested metadata structures
 
 ### Changed
 - `remember` function now returns either a single Memory or List[Memory] depending on chunking
@@ -46,4 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved error messages for invalid slug formats
 
 ### Fixed
-- Better error handling when using invalid slugs in API calls 
+- Better error handling when using invalid slugs in API calls
+- Clarified metadata filtering behavior in GraphQL queries
+- Improved documentation for metadata filtering examples
+ 
