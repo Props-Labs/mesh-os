@@ -696,14 +696,21 @@ class MeshOS:
         }
         """
         
+        # Prepare the arguments
+        args = {
+            "query_embedding": embedding_str,
+            "match_threshold": threshold,
+            "match_count": limit,
+            "filter_agent_id": agent_id
+        }
+        
+        # Add metadata filter if provided
+        if filters:
+            args["metadata_filter"] = filters
+        
         # Execute the query
         result = self._execute_query(query, {
-            "args": {
-                "query_embedding": embedding_str,
-                "match_threshold": threshold,
-                "match_count": limit,
-                "filter_agent_id": agent_id
-            }
+            "args": args
         })
         
         # Convert results to Memory objects, preserving similarity scores

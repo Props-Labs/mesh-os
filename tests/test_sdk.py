@@ -411,7 +411,6 @@ class TestMemoryOperations:
         filters = {
             "type": "test",
             "confidence": {"_gt": 0.8},
-            "created_at": {"_gte": "2024-01-01"},
             "tags": {"_contains": ["important"]}
         }
         
@@ -438,7 +437,29 @@ class TestMemoryOperations:
         verify_graphql_query(mock_requests.mock_calls[0], "query SearchMemories")
         variables = mock_requests.call_args[1]["json"]["variables"]
         assert "args" in variables
-
+        assert "metadata_filter" in variables["args"]
+        assert variables["args"]["metadata_filter"] == filters
+        
+        # Test with nested metadata filters
+        nested_filters = {
+            "metadata": {
+                "nested": {
+                    "field": "value"
+                }
+            }
+        }
+        
+        memories = os.recall(
+            query="test query",
+            filters=nested_filters,
+            use_semantic_expansion=False,
+            adaptive_threshold=False
+        )
+        
+        # Verify nested filters were passed correctly
+        variables = mock_requests.call_args[1]["json"]["variables"]
+        assert variables["args"]["metadata_filter"] == nested_filters
+    
     def test_semantic_expansion(self, os, mock_requests, mock_openai):
         """Test query semantic expansion."""
         # Set up responses to trigger semantic expansion:

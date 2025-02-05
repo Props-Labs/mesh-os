@@ -627,31 +627,42 @@ def up():
     try:
         # Apply SQL migrations first
         with console.status("[bold]Applying SQL migrations...", spinner="dots"):
-            migration_file = Path("hasura/migrations/default/1_init/up.sql")
-            if migration_file.exists():
-                console.print(f"[blue]Found migration file:[/] {migration_file}")
+            migrations_dir = Path("hasura/migrations/default")
+            if not migrations_dir.exists():
+                console.print("[red]Error:[/] No migrations directory found at", migrations_dir)
+                return
+            
+            # Get all migration directories in order
+            migration_dirs = sorted([d for d in migrations_dir.iterdir() if d.is_dir()])
+            if not migration_dirs:
+                console.print("[red]Error:[/] No migration directories found in", migrations_dir)
+                return
+            
+            # First create the hdb_catalog schema if it doesn't exist
+            schema_result = subprocess.run(
+                ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c", 
+                 "CREATE SCHEMA IF NOT EXISTS hdb_catalog;"],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            if schema_result.returncode != 0:
+                console.print("[red]Error creating hdb_catalog schema:[/]")
+                console.print(schema_result.stderr)
+                return
+            
+            # Apply each migration in order
+            for migration_dir in migration_dirs:
+                migration_file = migration_dir / "up.sql"
+                if not migration_file.exists():
+                    console.print(f"[yellow]Warning:[/] No up.sql found in {migration_dir}")
+                    continue
                 
-                # First create the hdb_catalog schema if it doesn't exist
-                schema_result = subprocess.run(
-                    ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c", 
-                     "CREATE SCHEMA IF NOT EXISTS hdb_catalog;"],
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-                if schema_result.returncode != 0:
-                    console.print("[red]Error creating hdb_catalog schema:[/]")
-                    console.print(schema_result.stderr)
-                    return
-                
-                # Run the migrations
-                console.print("[blue]Applying SQL migrations...[/]")
-                
-                # First show the SQL that will be executed
+                console.print(f"[blue]Applying migration:[/] {migration_dir.name}")
                 console.print("[blue]Migration SQL preview:[/]")
                 console.print(migration_file.read_text())
                 
-                # Run the migrations with verbose output
+                # Run the migration
                 result = subprocess.run(
                     ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", 
                      "-v", "ON_ERROR_STOP=1", "-a"],
@@ -671,41 +682,34 @@ def up():
                     console.print(result.stderr)
                 
                 if result.returncode != 0:
-                    console.print("[red]Error applying SQL migrations[/]")
+                    console.print(f"[red]Error applying migration {migration_dir.name}[/]")
                     return
+            
+            # Verify the search_memories function was created with the latest version
+            verify_result = subprocess.run(
+                ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c",
+                 "SELECT proname, proargnames FROM pg_proc WHERE proname = 'search_memories';"],
+                capture_output=True,
+                text=True
+            )
+            
+            if "search_memories" not in verify_result.stdout:
+                console.print("[red]Warning:[/] search_memories function was not found after migrations")
+                console.print("[blue]Attempting to verify what went wrong...[/]")
                 
-                # Verify the function was created
-                verify_result = subprocess.run(
+                # Check if the function exists with different parameters
+                check_func = subprocess.run(
                     ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c",
-                     "SELECT proname, proargnames FROM pg_proc WHERE proname = 'search_memories';"],
+                     "\\df search_memories"],
                     capture_output=True,
                     text=True
                 )
-                
-                if "search_memories" not in verify_result.stdout:
-                    console.print("[red]Warning:[/] search_memories function was not found after migration")
-                    console.print("[blue]Attempting to verify what went wrong...[/]")
-                    
-                    # Check if the function exists with different parameters
-                    check_func = subprocess.run(
-                        ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c",
-                         "\\df search_memories"],
-                        capture_output=True,
-                        text=True
-                    )
-                    console.print("[yellow]Function details:[/]")
-                    console.print(check_func.stdout)
-                else:
-                    console.print("[green]✓[/] search_memories function created successfully")
-                
-                # Verify Hasura tracking
-                console.print("[blue]Verifying Hasura function tracking...[/]")
-                
-                # Run the migrations
-                console.print("[green]✓[/] SQL migrations completed")
+                console.print("[yellow]Function details:[/]")
+                console.print(check_func.stdout)
             else:
-                console.print("[red]Error:[/] No SQL migrations found at", migration_file)
-                return
+                console.print("[green]✓[/] search_memories function created successfully")
+            
+            console.print("[green]✓[/] SQL migrations completed")
         
         # Apply Hasura metadata
         with console.status("[bold]Applying Hasura metadata...", spinner="dots"):
@@ -1005,14 +1009,71 @@ def up():
 
 @cli.command()
 def down():
-    """Stop MeshOS services."""
+    """Roll back MeshOS services and migrations."""
     if not Path("docker-compose.yml").exists():
         console.print("[red]Error:[/] docker-compose.yml not found. Are you in a MeshOS project directory?")
         return
     
-    with console.status("[bold]Stopping MeshOS services...", spinner="dots"):
-        subprocess.run(["docker", "compose", "down"], capture_output=True)
-    console.print("[green]✓[/] Services stopped successfully")
+    # Load environment from current directory
+    load_env()
+    
+    try:
+        # Roll back migrations in reverse order
+        with console.status("[bold]Rolling back migrations...", spinner="dots"):
+            migrations_dir = Path("hasura/migrations/default")
+            if migrations_dir.exists():
+                # Get all migration directories in reverse order
+                migration_dirs = sorted([d for d in migrations_dir.iterdir() if d.is_dir()], reverse=True)
+                
+                for migration_dir in migration_dirs:
+                    down_file = migration_dir / "down.sql"
+                    if not down_file.exists():
+                        console.print(f"[yellow]Warning:[/] No down.sql found in {migration_dir}")
+                        continue
+                    
+                    console.print(f"[blue]Rolling back migration:[/] {migration_dir.name}")
+                    console.print("[blue]Rollback SQL preview:[/]")
+                    console.print(down_file.read_text())
+                    
+                    # Run the rollback
+                    result = subprocess.run(
+                        ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", 
+                         "-v", "ON_ERROR_STOP=1", "-a"],
+                        input=down_file.read_text(),
+                        shell=False,
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    # Always show the output for debugging
+                    if result.stdout:
+                        console.print("[blue]Rollback output:[/]")
+                        console.print(result.stdout)
+                    
+                    if result.stderr:
+                        console.print("[yellow]Rollback warnings/errors:[/]")
+                        console.print(result.stderr)
+                    
+                    if result.returncode != 0:
+                        console.print(f"[red]Error rolling back migration {migration_dir.name}[/]")
+                        return
+                
+                console.print("[green]✓[/] Migrations rolled back successfully")
+        
+        # Stop all services
+        with console.status("[bold]Stopping services...", spinner="dots"):
+            subprocess.run(["docker", "compose", "down", "-v"], capture_output=True)
+        
+        console.print(Panel(
+            "[green]✓[/] Services stopped and migrations rolled back successfully!",
+            title="Services Stopped",
+            border_style="green"
+        ))
+    
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Error during rollback:[/] {str(e)}")
+        console.print("\nYou can check the logs with: [blue]docker compose logs[/]")
+        return
 
 if __name__ == "__main__":
     cli() 

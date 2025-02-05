@@ -14,4 +14,10 @@ computed_fields:
       function:
         name: search_memories
         schema: public
+        arguments:
+          query_embedding: $query_embedding
+          match_threshold: $match_threshold
+          match_count: $match_count
+          filter_agent_id: $filter_agent_id
+          metadata_filter: $metadata_filter
     comment: Computes similarity score for vector search 
