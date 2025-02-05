@@ -18,10 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Nested object matching in metadata
   - Array containment operations with `_contains` operator
   - Full support for deep nested metadata structures
+- Improved IDE support and type hints:
+  - Added `py.typed` marker for better type checking
+  - Enhanced docstrings with examples and detailed descriptions
+  - Added proper type hints for all public APIs
+  - Better package metadata for development tools
 
 ### Changed
 - `remember` function now returns either a single Memory or List[Memory] depending on chunking
 - Enhanced memory metadata to support chunk information and relationships
+- Enhanced package structure for better IDE integration
+- Improved import organization in core modules
 
 ## [0.1.8] - 2025-02-05
 
