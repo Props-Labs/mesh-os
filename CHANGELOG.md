@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2025-02-05
+
+### Fixed
+- Fixed timestamp handling in `search_memories` function to properly handle timezone conversions
+- Added explicit timezone casting with `AT TIME ZONE 'UTC'` for all temporal comparisons
+- Improved handling of `_is_null` operator for both `created_at` and `expires_at` filters
+
 ## [0.1.10] - 2025-02-05
 
 ### Added
