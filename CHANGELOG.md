@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2025-02-05
+
+### Added
+- Memory expiration support:
+  - New `expires_at` field for memories to set expiration timestamps
+  - Optional `expires_at` parameter in `remember()` function
+  - Memories without expiration default to NULL (never expire)
+- Enhanced memory search capabilities:
+  - Added support for temporal filtering with standard Hasura operators (_gt, _gte, _lt, _lte, _eq)
+  - Filter memories by `created_at` using `created_at_filter`
+  - Filter memories by `expires_at` using `expires_at_filter`
+  - All temporal filters are optional and can be combined with existing filters
+
+### Changed
+- Updated `search_memories` function to support temporal filtering
+- Extended memory schema with `expires_at` field
+- Improved GraphQL queries to include `expires_at` in responses
+- Updated Memory class to include optional `expires_at` field
+
 ## [0.1.9] - 2025-02-05
 
 ### Added

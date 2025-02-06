@@ -42,6 +42,7 @@ class Memory:
     embedding: List[float]
     created_at: str
     updated_at: str
+    expires_at: Optional[str] = None
     similarity: Optional[float] = None  # Add similarity field
 
 @dataclass
@@ -322,7 +323,8 @@ class MeshOS:
         self,
         content: str,
         agent_id: str,
-        metadata: Optional[Union[Dict, MemoryMetadata]] = None
+        metadata: Optional[Union[Dict, MemoryMetadata]] = None,
+        expires_at: Optional[str] = None
     ) -> Union[Memory, List[Memory]]:
         """Store a new memory, automatically chunking if content exceeds token limit.
         
@@ -330,10 +332,31 @@ class MeshOS:
             content: The text content to store
             agent_id: The ID of the agent creating the memory
             metadata: Optional metadata for the memory
+            expires_at: Optional expiration timestamp in ISO 8601 format (e.g., "2025-02-05T00:00:00Z")
             
         Returns:
             Memory or List[Memory]: Single memory if content fits in one chunk,
             list of linked memories if content was chunked
+            
+        Examples:
+            # Store a memory with expiration
+            memory = mesh.remember(
+                content="Important but temporary info",
+                agent_id="agent-id",
+                expires_at="2025-12-31T23:59:59Z"
+            )
+            
+            # Store a memory with metadata and expiration
+            memory = mesh.remember(
+                content="Research findings",
+                agent_id="agent-id",
+                metadata={
+                    "type": "knowledge",
+                    "subtype": "research-report",
+                    "tags": ["important"]
+                },
+                expires_at="2026-01-01T00:00:00Z"
+            )
         """
         # Convert dict to MemoryMetadata if needed
         if isinstance(metadata, dict):
@@ -356,12 +379,13 @@ class MeshOS:
             metadata_dict = metadata.model_dump()
             
             query = """
-            mutation Remember($content: String!, $agent_id: uuid!, $metadata: jsonb, $embedding: vector!) {
+            mutation Remember($content: String!, $agent_id: uuid!, $metadata: jsonb, $embedding: vector!, $expires_at: timestamptz) {
               insert_memories_one(object: {
                 content: $content,
                 agent_id: $agent_id,
                 metadata: $metadata,
-                embedding: $embedding
+                embedding: $embedding,
+                expires_at: $expires_at
               }) {
                 id
                 agent_id
@@ -370,6 +394,7 @@ class MeshOS:
                 embedding
                 created_at
                 updated_at
+                expires_at
               }
             }
             """
@@ -377,7 +402,8 @@ class MeshOS:
                 "content": content,
                 "agent_id": agent_id,
                 "metadata": metadata_dict,
-                "embedding": embedding_str
+                "embedding": embedding_str,
+                "expires_at": expires_at
             })
             memory_data = result["data"]["insert_memories_one"]
             
@@ -408,12 +434,13 @@ class MeshOS:
                 
                 # Store chunk
                 query = """
-                mutation Remember($content: String!, $agent_id: uuid!, $metadata: jsonb, $embedding: vector!) {
+                mutation Remember($content: String!, $agent_id: uuid!, $metadata: jsonb, $embedding: vector!, $expires_at: timestamptz) {
                   insert_memories_one(object: {
                     content: $content,
                     agent_id: $agent_id,
                     metadata: $metadata,
-                    embedding: $embedding
+                    embedding: $embedding,
+                    expires_at: $expires_at
                   }) {
                     id
                     agent_id
@@ -422,6 +449,7 @@ class MeshOS:
                     embedding
                     created_at
                     updated_at
+                    expires_at
                   }
                 }
                 """
@@ -429,7 +457,8 @@ class MeshOS:
                     "content": chunk,
                     "agent_id": agent_id,
                     "metadata": chunk_metadata,
-                    "embedding": embedding_str
+                    "embedding": embedding_str,
+                    "expires_at": expires_at
                 })
                 memory_data = result["data"]["insert_memories_one"]
                 
@@ -505,7 +534,9 @@ class MeshOS:
         min_results: int = 1,    # Start with finding just one good match
         adaptive_threshold: bool = True,
         use_semantic_expansion: bool = True,
-        filters: Optional[Dict] = None
+        metadata_filter: Optional[Dict] = None,
+        created_at_filter: Optional[Dict] = None,
+        expires_at_filter: Optional[Dict] = None
     ) -> List[Memory]:
         """Search memories by semantic similarity.
         
@@ -517,10 +548,29 @@ class MeshOS:
             min_results: Minimum number of results to return (default 1)
             adaptive_threshold: If True, gradually lower threshold until min_results is met
             use_semantic_expansion: If True, generate variations of the query when needed
-            filters: Additional filters to apply
+            metadata_filter: Filter by metadata fields (e.g., {"type": "knowledge"})
+            created_at_filter: Filter by creation time using operators (_gt, _gte, _lt, _lte, _eq)
+            expires_at_filter: Filter by expiration time using operators (_gt, _gte, _lt, _lte, _eq)
             
         Returns:
             List of Memory objects with similarity scores, sorted by similarity
+            
+        Examples:
+            # Search with creation time filter
+            memories = mesh.recall(
+                "query",
+                created_at_filter={
+                    "_gte": "2024-01-01T00:00:00Z",
+                    "_lt": "2025-01-01T00:00:00Z"
+                }
+            )
+            
+            # Search with expiration and metadata filters
+            memories = mesh.recall(
+                "query",
+                metadata_filter={"type": "knowledge"},
+                expires_at_filter={"_gt": "2025-02-05T00:00:00Z"}
+            )
         """
         # First try: Direct search with initial threshold
         results = self._recall_with_threshold(
@@ -528,7 +578,9 @@ class MeshOS:
             threshold=threshold,
             agent_id=agent_id,
             limit=limit,
-            filters=filters
+            metadata_filter=metadata_filter,
+            created_at_filter=created_at_filter,
+            expires_at_filter=expires_at_filter
         )
         
         if len(results) >= min_results:
@@ -545,7 +597,9 @@ class MeshOS:
                     threshold=current_threshold,
                     agent_id=agent_id,
                     limit=limit,
-                    filters=filters
+                    metadata_filter=metadata_filter,
+                    created_at_filter=created_at_filter,
+                    expires_at_filter=expires_at_filter
                 )
                 
                 # Add new results that aren't already in the list
@@ -570,7 +624,9 @@ class MeshOS:
                     threshold=threshold,
                     agent_id=agent_id,
                     limit=limit,
-                    filters=filters
+                    metadata_filter=metadata_filter,
+                    created_at_filter=created_at_filter,
+                    expires_at_filter=expires_at_filter
                 )
                 
                 # Add new results or update if better similarity
@@ -592,7 +648,9 @@ class MeshOS:
                             threshold=current_threshold,
                             agent_id=agent_id,
                             limit=limit,
-                            filters=filters
+                            metadata_filter=metadata_filter,
+                            created_at_filter=created_at_filter,
+                            expires_at_filter=expires_at_filter
                         )
                         
                         for memory in variation_results:
@@ -615,62 +673,15 @@ class MeshOS:
         results.sort(key=lambda x: x.similarity or 0, reverse=True)
         return results[:limit]
 
-    def _recall_with_adaptive_threshold(
-        self,
-        query: str,
-        threshold: float,
-        min_results: int,
-        adaptive_threshold: bool,
-        agent_id: Optional[str] = None,
-        limit: int = 10,
-        filters: Optional[Dict] = None
-    ) -> List[Memory]:
-        """Internal method to perform recall with adaptive threshold."""
-        if not adaptive_threshold:
-            return self._recall_with_threshold(
-                query=query,
-                threshold=threshold,
-                agent_id=agent_id,
-                limit=limit,
-                filters=filters
-            )
-        
-        # Start with high threshold and gradually lower it
-        current_threshold = threshold
-        min_threshold = 0.3  # Don't go below this to avoid irrelevant matches
-        step = 0.05
-        
-        results = []
-        while current_threshold >= min_threshold:
-            current_results = self._recall_with_threshold(
-                query=query,
-                threshold=current_threshold,
-                agent_id=agent_id,
-                limit=limit,
-                filters=filters
-            )
-            
-            # Add new results that aren't already in the list
-            for result in current_results:
-                if not any(r.id == result.id for r in results):
-                    results.append(result)
-            
-            if len(results) >= min_results:
-                break
-                
-            current_threshold -= step
-        
-        # Sort by similarity and return
-        results.sort(key=lambda x: x.similarity or 0, reverse=True)
-        return results[:limit]
-
     def _recall_with_threshold(
         self,
         query: str,
         threshold: float,
         agent_id: Optional[str] = None,
         limit: int = 10,
-        filters: Optional[Dict] = None
+        metadata_filter: Optional[Dict] = None,
+        created_at_filter: Optional[Dict] = None,
+        expires_at_filter: Optional[Dict] = None
     ) -> List[Memory]:
         """Internal method to perform recall with a specific threshold."""
         # Create embedding for the query
@@ -692,6 +703,7 @@ class MeshOS:
                 similarity
                 created_at
                 updated_at
+                expires_at
             }
         }
         """
@@ -704,9 +716,13 @@ class MeshOS:
             "filter_agent_id": agent_id
         }
         
-        # Add metadata filter if provided
-        if filters:
-            args["metadata_filter"] = filters
+        # Add filters if provided
+        if metadata_filter:
+            args["metadata_filter"] = metadata_filter
+        if created_at_filter:
+            args["created_at_filter"] = created_at_filter
+        if expires_at_filter:
+            args["expires_at_filter"] = expires_at_filter
         
         # Execute the query
         result = self._execute_query(query, {
