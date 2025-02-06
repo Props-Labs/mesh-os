@@ -1075,5 +1075,334 @@ def down():
         console.print("\nYou can check the logs with: [blue]docker compose logs[/]")
         return
 
+@cli.command("up:remote")
+@click.option("--url", required=True, help="URL of the Hasura instance (e.g. https://your-instance.hasura.app)")
+@click.option("--admin-secret", required=True, help="Admin secret for the Hasura instance")
+@click.option("--clean", is_flag=True, help="Clear existing metadata before deploying")
+def remote_up(url: str, admin_secret: str, clean: bool):
+    """Deploy metadata and migrations to an external Hasura instance."""
+    if not Path("hasura/metadata").exists():
+        console.print("[red]Error:[/] No Hasura metadata directory found. Are you in a MeshOS project directory?")
+        return
+
+    # Normalize URL by removing trailing slash
+    url = url.rstrip("/")
+    base_url = f"{url}/v1/metadata"
+
+    try:
+        # Test connection to Hasura instance
+        with console.status("[bold]Testing connection to Hasura instance...", spinner="dots"):
+            result = subprocess.run(
+                ["curl", "-s", "-X", "GET",
+                 "-H", f"X-Hasura-Admin-Secret: {admin_secret}",
+                 "-H", "Content-Type: application/json",
+                 f"{url}/v1/version"],
+                capture_output=True,
+                text=True
+            )
+            
+            try:
+                response = json.loads(result.stdout)
+                if "version" in response:
+                    console.print(f"[green]✓[/] Connected to Hasura version: {response['version']}")
+                else:
+                    console.print("[red]Error:[/] Invalid response from Hasura instance")
+                    console.print(f"Response: {result.stdout}")
+                    return
+            except json.JSONDecodeError:
+                console.print("[red]Error:[/] Could not connect to Hasura instance")
+                console.print(f"Response: {result.stdout}")
+                if result.stderr:
+                    console.print(f"Error details: {result.stderr}")
+                return
+
+        # Clear existing metadata if requested
+        if clean:
+            with console.status("[bold]Clearing existing metadata...", spinner="dots"):
+                result = subprocess.run(
+                    ["curl", "-s", "-X", "POST",
+                     "-H", "Content-Type: application/json",
+                     "-H", f"X-Hasura-Admin-Secret: {admin_secret}",
+                     "-d", '{"type":"clear_metadata","args":{}}',
+                     base_url],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode != 0:
+                    console.print("[red]Error clearing metadata:[/]", result.stderr)
+                    return
+
+        # Create the default source
+        with console.status("[bold]Setting up database source...", spinner="dots"):
+            source_payload = {
+                "type": "pg_add_source",
+                "args": {
+                    "name": "default",
+                    "configuration": {
+                        "connection_info": {
+                            "database_url": {
+                                "from_env": "HASURA_GRAPHQL_DATABASE_URL"
+                            },
+                            "isolation_level": "read-committed",
+                            "use_prepared_statements": True
+                        }
+                    }
+                }
+            }
+
+            result = subprocess.run(
+                ["curl", "-s", "-X", "POST",
+                 "-H", "Content-Type: application/json",
+                 "-H", f"X-Hasura-Admin-Secret: {admin_secret}",
+                 "-d", json.dumps(source_payload),
+                 base_url],
+                capture_output=True,
+                text=True
+            )
+
+            if result.stdout:
+                try:
+                    response = json.loads(result.stdout)
+                    if "error" in response and "already exists" not in response.get("error", ""):
+                        console.print("[red]Error creating source:[/]", json.dumps(response, indent=2))
+                        return
+                except json.JSONDecodeError:
+                    console.print("[red]Error parsing response:[/]", result.stdout)
+                    return
+
+        # Track tables and set up relationships
+        with console.status("[bold]Setting up tables and relationships...", spinner="dots"):
+            track_tables_payload = {
+                "type": "bulk",
+                "args": [
+                    {
+                        "type": "pg_track_table",
+                        "args": {
+                            "source": "default",
+                            "schema": "public",
+                            "name": "agents"
+                        }
+                    },
+                    {
+                        "type": "pg_track_table",
+                        "args": {
+                            "source": "default",
+                            "schema": "public",
+                            "name": "memories"
+                        }
+                    },
+                    {
+                        "type": "pg_track_table",
+                        "args": {
+                            "source": "default",
+                            "schema": "public",
+                            "name": "memory_edges"
+                        }
+                    },
+                    {
+                        "type": "pg_track_table",
+                        "args": {
+                            "source": "default",
+                            "schema": "public",
+                            "name": "memories_with_similarity"
+                        }
+                    },
+                    {
+                        "type": "pg_track_function",
+                        "args": {
+                            "function": {
+                                "schema": "public",
+                                "name": "search_memories"
+                            },
+                            "source": "default",
+                            "configuration": {
+                                "exposed_as": "query",
+                                "arguments": [
+                                    {
+                                        "name": "args",
+                                        "type": "search_memories_args!"
+                                    }
+                                ]
+                            },
+                            "comment": "Function for semantic search of memories with similarity scores"
+                        }
+                    },
+                    {
+                        "type": "pg_create_array_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "agents"
+                            },
+                            "name": "memories",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": {
+                                    "column": "agent_id",
+                                    "table": {
+                                        "schema": "public",
+                                        "name": "memories"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_object_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "memories"
+                            },
+                            "name": "agent",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": "agent_id"
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_array_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "memories"
+                            },
+                            "name": "incoming_edges",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": {
+                                    "column": "target_memory",
+                                    "table": {
+                                        "schema": "public",
+                                        "name": "memory_edges"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_array_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "memories"
+                            },
+                            "name": "outgoing_edges",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": {
+                                    "column": "source_memory",
+                                    "table": {
+                                        "schema": "public",
+                                        "name": "memory_edges"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_object_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "memory_edges"
+                            },
+                            "name": "source",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": "source_memory"
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_object_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "memory_edges"
+                            },
+                            "name": "target",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": "target_memory"
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_object_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "memories_with_similarity"
+                            },
+                            "name": "agent",
+                            "source": "default",
+                            "using": {
+                                "manual_configuration": {
+                                    "remote_table": {
+                                        "schema": "public",
+                                        "name": "agents"
+                                    },
+                                    "column_mapping": {
+                                        "agent_id": "id"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+
+            result = subprocess.run(
+                ["curl", "-s", "-X", "POST",
+                 "-H", "Content-Type: application/json",
+                 "-H", f"X-Hasura-Admin-Secret: {admin_secret}",
+                 "-d", json.dumps(track_tables_payload),
+                 base_url],
+                capture_output=True,
+                text=True
+            )
+
+            if result.stdout:
+                try:
+                    response = json.loads(result.stdout)
+                    if "error" in response and not all(e in response.get("error", "") for e in ["already exists", "already tracked"]):
+                        console.print("[red]Error tracking tables:[/]", json.dumps(response, indent=2))
+                        return
+                except json.JSONDecodeError:
+                    console.print("[red]Error parsing response:[/]", result.stdout)
+                    return
+
+        # Reload metadata
+        with console.status("[bold]Reloading metadata...", spinner="dots"):
+            result = subprocess.run(
+                ["curl", "-s", "-X", "POST",
+                 "-H", "Content-Type: application/json",
+                 "-H", f"X-Hasura-Admin-Secret: {admin_secret}",
+                 "-d", '{"type":"reload_metadata","args":{"reload_remote_schemas":true}}',
+                 base_url],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0:
+                console.print("[red]Error reloading metadata:[/]", result.stderr)
+                return
+
+        console.print(Panel(
+            "[green]✓[/] Successfully deployed metadata to external Hasura instance!\n\n"
+            f"[blue]• GraphQL API:[/] {url}/v1/graphql\n"
+            f"[blue]• Hasura Console:[/] {url}/console",
+            title="Deployment Complete",
+            border_style="green"
+        ))
+
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Error during deployment:[/] {str(e)}")
+        return
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/] {str(e)}")
+        return
+
 if __name__ == "__main__":
     cli() 
