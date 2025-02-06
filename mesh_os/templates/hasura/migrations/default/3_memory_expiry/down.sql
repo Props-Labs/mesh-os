@@ -1,16 +1,33 @@
--- Drop the updated search_memories function
-DROP FUNCTION IF EXISTS public.search_memories(vector(1536), float8, integer, uuid, jsonb, jsonb, jsonb);
-
--- Remove expires_at column
-ALTER TABLE public.memories DROP COLUMN expires_at;
+-- Drop the updated search_memories function if it exists
+DROP FUNCTION IF EXISTS public.search_memories;
 
 -- Drop and recreate the view without expires_at
 DROP VIEW IF EXISTS public.memories_with_similarity;
 CREATE OR REPLACE VIEW public.memories_with_similarity AS
 SELECT 
-    m.*,
+    m.id,
+    m.agent_id,
+    m.content,
+    m.metadata,
+    m.embedding,
+    m.created_at,
+    m.updated_at,
     0::float8 as similarity
 FROM memories m;
+
+-- Remove expires_at column if it exists
+DO $$ 
+BEGIN
+    IF EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'memories' 
+        AND column_name = 'expires_at'
+    ) THEN
+        ALTER TABLE public.memories DROP COLUMN expires_at;
+    END IF;
+END $$;
 
 -- Restore the previous version of search_memories from 2_metadata_filtering
 CREATE OR REPLACE FUNCTION public.search_memories(
