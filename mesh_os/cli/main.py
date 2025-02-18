@@ -659,8 +659,6 @@ def up():
                     continue
                 
                 console.print(f"[blue]Applying migration:[/] {migration_dir.name}")
-                console.print("[blue]Migration SQL preview:[/]")
-                console.print(migration_file.read_text())
                 
                 # Run the migration
                 result = subprocess.run(
@@ -684,32 +682,6 @@ def up():
                 if result.returncode != 0:
                     console.print(f"[red]Error applying migration {migration_dir.name}[/]")
                     return
-            
-            # Verify the search_memories function was created with the latest version
-            verify_result = subprocess.run(
-                ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c",
-                 "SELECT proname, proargnames FROM pg_proc WHERE proname = 'search_memories';"],
-                capture_output=True,
-                text=True
-            )
-            
-            if "search_memories" not in verify_result.stdout:
-                console.print("[red]Warning:[/] search_memories function was not found after migrations")
-                console.print("[blue]Attempting to verify what went wrong...[/]")
-                
-                # Check if the function exists with different parameters
-                check_func = subprocess.run(
-                    ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "mesh_os", "-c",
-                     "\\df search_memories"],
-                    capture_output=True,
-                    text=True
-                )
-                console.print("[yellow]Function details:[/]")
-                console.print(check_func.stdout)
-            else:
-                console.print("[green]✓[/] search_memories function created successfully")
-            
-            console.print("[green]✓[/] SQL migrations completed")
         
         # Apply Hasura metadata
         with console.status("[bold]Applying Hasura metadata...", spinner="dots"):
@@ -740,7 +712,13 @@ def up():
                                     "from_env": "HASURA_GRAPHQL_DATABASE_URL"
                                 },
                                 "isolation_level": "read-committed",
-                                "use_prepared_statements": True
+                                "use_prepared_statements": True,
+                                "pool_settings": {
+                                    "connection_lifetime": 600,
+                                    "idle_timeout": 180,
+                                    "max_connections": 50,
+                                    "retries": 1
+                                }
                             }
                         }
                     }
@@ -767,322 +745,131 @@ def up():
                         console.print("[red]Error parsing response:[/]", result.stdout)
                         return
                 
-                # Track specific tables and set up relationships
-                track_tables_payload = {
-                    "type": "bulk",
-                    "args": [
-                        {
-                            "type": "pg_track_table",
-                            "args": {
-                                "source": "default",
-                                "schema": "public",
-                                "name": "agents"
-                            }
-                        },
-                        {
-                            "type": "pg_track_table",
-                            "args": {
-                                "source": "default",
-                                "schema": "public",
-                                "name": "memories"
-                            }
-                        },
-                        {
-                            "type": "pg_track_table",
-                            "args": {
-                                "source": "default",
-                                "schema": "public",
-                                "name": "memory_edges"
-                            }
-                        },
-                        {
-                            "type": "pg_track_table",
-                            "args": {
-                                "source": "default",
-                                "schema": "public",
-                                "name": "memories_with_similarity"
-                            }
-                        },
-                        {
-                            "type": "pg_track_table",
-                            "args": {
-                                "source": "default",
-                                "schema": "public",
-                                "name": "search_results_with_similarity"
-                            }
-                        },
-                        {
-                            "type": "pg_track_table",
-                            "args": {
-                                "source": "default",
-                                "schema": "public",
-                                "name": "entities"
-                            }
-                        },
-                        {
-                            "type": "pg_track_table",
-                            "args": {
-                                "source": "default",
-                                "schema": "public",
-                                "name": "entity_memory_links"
-                            }
-                        },
-                        {
-                            "type": "pg_track_table",
-                            "args": {
-                                "source": "default",
-                                "schema": "public",
-                                "name": "workflows"
-                            }
-                        },
-                        {
-                            "type": "pg_track_function",
-                            "args": {
-                                "function": {
-                                    "schema": "public",
-                                    "name": "search_memories"
-                                },
-                                "source": "default",
-                                "configuration": {
-                                    "exposed_as": "query",
-                                    "arguments": [
-                                        {
-                                            "name": "args",
-                                            "type": "search_memories_args!"
-                                        }
-                                    ]
-                                },
-                                "comment": "Function for semantic search of memories with similarity scores"
-                            }
-                        },
-                        {
-                            "type": "pg_track_function",
-                            "args": {
-                                "function": {
-                                    "schema": "public",
-                                    "name": "search_memories_and_entities"
-                                },
-                                "source": "default",
-                                "configuration": {
-                                    "exposed_as": "query"
-                                },
-                                "comment": "Function for combined semantic search of memories and entities"
-                            }
-                        },
-                        {
-                            "type": "pg_create_array_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "agents"
-                                },
-                                "name": "memories",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": {
-                                        "column": "agent_id",
-                                        "table": {
-                                            "schema": "public",
-                                            "name": "memories"
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_object_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "memories"
-                                },
-                                "name": "agent",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": "agent_id"
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_array_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "memories"
-                                },
-                                "name": "incoming_edges",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": {
-                                        "column": "target_memory",
-                                        "table": {
-                                            "schema": "public",
-                                            "name": "memory_edges"
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_array_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "memories"
-                                },
-                                "name": "outgoing_edges",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": {
-                                        "column": "source_memory",
-                                        "table": {
-                                            "schema": "public",
-                                            "name": "memory_edges"
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_array_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "memories"
-                                },
-                                "name": "entity_links",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": {
-                                        "column": "memory_id",
-                                        "table": {
-                                            "schema": "public",
-                                            "name": "entity_memory_links"
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_array_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "entities"
-                                },
-                                "name": "memory_links",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": {
-                                        "column": "entity_id",
-                                        "table": {
-                                            "schema": "public",
-                                            "name": "entity_memory_links"
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_object_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "entity_memory_links"
-                                },
-                                "name": "entity",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": "entity_id"
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_object_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "entity_memory_links"
-                                },
-                                "name": "memory",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": "memory_id"
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_object_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "memory_edges"
-                                },
-                                "name": "source",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": "source_memory"
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_object_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "memory_edges"
-                                },
-                                "name": "target",
-                                "source": "default",
-                                "using": {
-                                    "foreign_key_constraint_on": "target_memory"
-                                }
-                            }
-                        },
-                        {
-                            "type": "pg_create_object_relationship",
-                            "args": {
-                                "table": {
-                                    "schema": "public",
-                                    "name": "memories_with_similarity"
-                                },
-                                "name": "agent",
-                                "source": "default",
-                                "using": {
-                                    "manual_configuration": {
-                                        "remote_table": {
-                                            "schema": "public",
-                                            "name": "agents"
-                                        },
-                                        "column_mapping": {
-                                            "agent_id": "id"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    ]
-                }
+                # Wait a moment for the database to be fully ready
+                time.sleep(2)
                 
-                result = subprocess.run(
-                    ["curl", "-s", "-X", "POST",
-                     "-H", "Content-Type: application/json",
-                     "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'meshos')}",
-                     "-d", json.dumps(track_tables_payload),
-                     "http://localhost:8080/v1/metadata"],
-                    capture_output=True,
-                    text=True
-                )
-                
-                # Print the response for debugging
-                if result.stdout:
+                # Track tables and set up relationships
+                tables_file = metadata_dir / "databases/default/tables/tables.yaml"
+                if tables_file.exists():
+                    import yaml
                     try:
-                        response = json.loads(result.stdout)
-                        if "error" in response and not all(e in response.get("error", "") for e in ["already exists", "already tracked"]):
-                            console.print("[red]Error tracking tables:[/]", json.dumps(response, indent=2))
-                            return
-                    except json.JSONDecodeError:
-                        console.print("[red]Error parsing response:[/]", result.stdout)
+                        with open(tables_file) as f:
+                            tables_config = yaml.safe_load(f)
+                        
+                        # First track all tables and views without relationships
+                        track_operations = []
+                        for table in tables_config:
+                            # Track table
+                            track_operations.append({
+                                "type": "pg_track_table",
+                                "args": {
+                                    "source": "default",
+                                    "table": table["table"],
+                                    "configuration": table.get("configuration", {})
+                                }
+                            })
+                        
+                        # Apply table tracking first
+                        bulk_payload = {
+                            "type": "bulk",
+                            "args": track_operations
+                        }
+                        
+                        result = subprocess.run(
+                            ["curl", "-s", "-X", "POST",
+                             "-H", "Content-Type: application/json",
+                             "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'meshos')}",
+                             "-d", json.dumps(bulk_payload),
+                             "http://localhost:8080/v1/metadata"],
+                            capture_output=True,
+                            text=True
+                        )
+                        
+                        if result.stdout:
+                            try:
+                                response = json.loads(result.stdout)
+                                if "error" in response and not all(e in response.get("error", "") for e in ["already exists", "already tracked"]):
+                                    console.print("[red]Error tracking tables:[/]", json.dumps(response, indent=2))
+                                    return
+                            except json.JSONDecodeError:
+                                console.print("[red]Error parsing response:[/]", result.stdout)
+                                return
+                        
+                        # Now add relationships
+                        relationship_operations = []
+                        for table in tables_config:
+                            if "object_relationships" in table:
+                                for rel in table["object_relationships"]:
+                                    relationship_operations.append({
+                                        "type": "pg_create_object_relationship",
+                                        "args": {
+                                            "table": table["table"],
+                                            "name": rel["name"],
+                                            "source": "default",
+                                            "using": rel["using"]
+                                        }
+                                    })
+                            
+                            if "array_relationships" in table:
+                                for rel in table["array_relationships"]:
+                                    relationship_operations.append({
+                                        "type": "pg_create_array_relationship",
+                                        "args": {
+                                            "table": table["table"],
+                                            "name": rel["name"],
+                                            "source": "default",
+                                            "using": rel["using"]
+                                        }
+                                    })
+                        
+                        # Track functions
+                        functions_file = metadata_dir / "databases/default/functions/functions.yaml"
+                        if functions_file.exists():
+                            with open(functions_file) as f:
+                                functions_config = yaml.safe_load(f)
+                            
+                            for func in functions_config:
+                                relationship_operations.append({
+                                    "type": "pg_track_function",
+                                    "args": {
+                                        "function": func["function"],
+                                        "source": "default",
+                                        "configuration": func.get("configuration", {})
+                                    }
+                                })
+                        
+                        # Apply relationships and functions
+                        if relationship_operations:
+                            bulk_payload = {
+                                "type": "bulk",
+                                "args": relationship_operations
+                            }
+                            
+                            result = subprocess.run(
+                                ["curl", "-s", "-X", "POST",
+                                 "-H", "Content-Type: application/json",
+                                 "-H", f"X-Hasura-Admin-Secret: {os.getenv('HASURA_ADMIN_SECRET', 'meshos')}",
+                                 "-d", json.dumps(bulk_payload),
+                                 "http://localhost:8080/v1/metadata"],
+                                capture_output=True,
+                                text=True
+                            )
+                            
+                            if result.stdout:
+                                try:
+                                    response = json.loads(result.stdout)
+                                    if "error" in response and not all(e in response.get("error", "") for e in ["already exists", "already tracked"]):
+                                        console.print("[red]Error applying relationships:[/]", json.dumps(response, indent=2))
+                                        return
+                                except json.JSONDecodeError:
+                                    console.print("[red]Error parsing response:[/]", result.stdout)
+                                    return
+                    
+                    except yaml.YAMLError as e:
+                        console.print("[red]Error parsing metadata YAML:[/]", str(e))
+                        return
+                    except Exception as e:
+                        console.print("[red]Error processing metadata:[/]", str(e))
                         return
                 
                 # Reload metadata

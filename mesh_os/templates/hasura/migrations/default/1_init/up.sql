@@ -2,7 +2,25 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "vector";
 
--- Create function to validate slugs
+-- Create helper functions first
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE OR REPLACE FUNCTION normalize_embedding()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.embedding IS NOT NULL THEN
+        NEW.embedding = l2_normalize(NEW.embedding);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION validate_slug(slug text)
 RETURNS boolean AS $$
 BEGIN
@@ -10,209 +28,331 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
--- Create agents table
-CREATE TABLE IF NOT EXISTS public.agents (
+-- Create type_schemas table
+CREATE TABLE IF NOT EXISTS type_schemas (
+    type TEXT PRIMARY KEY,
+    schema JSONB NOT NULL,
+    metadata_schema JSONB,
+    embedding_config JSONB,
+    chunking_config JSONB,
+    validation_rules JSONB,
+    behaviors JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create workflow_schemas table
+CREATE TABLE IF NOT EXISTS workflow_schemas (
+    type TEXT PRIMARY KEY,
+    input_schema JSONB NOT NULL,
+    output_schema JSONB NOT NULL,
+    metadata_schema JSONB,
+    validation_rules JSONB,
+    behaviors JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create workflow_runs table
+CREATE TABLE IF NOT EXISTS workflow_runs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    slug TEXT UNIQUE,
-    name TEXT NOT NULL,
-    description TEXT,
-    metadata JSONB,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT valid_slug CHECK (slug IS NULL OR validate_slug(slug))
+    type TEXT NOT NULL REFERENCES workflow_schemas(type),
+    status TEXT NOT NULL DEFAULT 'pending',
+    input JSONB NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT valid_workflow_status CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled'))
+);
+
+-- Create workflow_results table
+CREATE TABLE IF NOT EXISTS workflow_results (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    workflow_id UUID NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+    result JSONB NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create memories table
-CREATE TABLE IF NOT EXISTS public.memories (
+CREATE TABLE IF NOT EXISTS memories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    agent_id UUID REFERENCES public.agents(id) ON DELETE CASCADE,
+    type TEXT NOT NULL REFERENCES type_schemas(type),
+    status TEXT NOT NULL DEFAULT 'active',
+    metadata JSONB DEFAULT '{}'::jsonb,
     content TEXT NOT NULL,
-    metadata JSONB,
-    embedding vector(1536),  -- OpenAI text-embedding-3-small dimension
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT valid_memory_status CHECK (status IN ('active', 'archived', 'deleted'))
 );
 
--- Create memory edges table
-CREATE TABLE IF NOT EXISTS public.memory_edges (
+-- Create memory_chunks table
+CREATE TABLE IF NOT EXISTS memory_chunks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    source_memory UUID REFERENCES public.memories(id) ON DELETE CASCADE,
-    target_memory UUID REFERENCES public.memories(id) ON DELETE CASCADE,
-    relationship TEXT NOT NULL,
-    weight FLOAT DEFAULT 1.0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    embedding vector(1536),
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Ensure ordering within a memory
+    UNIQUE (memory_id, chunk_index)
 );
 
--- Create index for vector similarity search
-CREATE INDEX IF NOT EXISTS idx_memories_embedding ON public.memories 
-USING ivfflat (embedding vector_cosine_ops)
-WITH (lists = 100);
+-- Create memory_edges table
+CREATE TABLE IF NOT EXISTS memory_edges (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    source_memory UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    target_memory UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    weight FLOAT DEFAULT 1.0,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
 
--- Create index for memory edges lookup
-CREATE INDEX IF NOT EXISTS idx_memory_edges_source ON public.memory_edges(source_memory);
-CREATE INDEX IF NOT EXISTS idx_memory_edges_target ON public.memory_edges(target_memory);
-
--- Create function to update updated_at timestamp
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+-- Create all triggers safely
+DO $$ 
+DECLARE
+    trigger_record record;
 BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+    -- First drop any existing user-defined triggers (excluding RI triggers)
+    FOR trigger_record IN 
+        SELECT 
+            tgname as trigger_name,
+            relname as table_name
+        FROM pg_trigger t
+        JOIN pg_class c ON t.tgrelid = c.oid
+        JOIN pg_namespace n ON c.relnamespace = n.oid
+        WHERE n.nspname = 'public'
+        AND NOT tgname LIKE 'RI_ConstraintTrigger_%'  -- Exclude referential integrity triggers
+        AND NOT tgname LIKE 'pg_trigger_%'  -- Exclude other system triggers
+    LOOP
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON public.%I;',
+            trigger_record.trigger_name,
+            trigger_record.table_name
+        );
+    END LOOP;
 
--- Create triggers for updated_at
-CREATE TRIGGER update_agents_updated_at
-    BEFORE UPDATE ON public.agents
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_memories_updated_at
-    BEFORE UPDATE ON public.memories
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
--- Create a view for memories with similarity
-CREATE OR REPLACE VIEW public.memories_with_similarity AS
-SELECT 
-    m.*,
-    0::float8 as similarity  -- Default similarity, will be replaced in search
-FROM memories m;
-
--- Add function to normalize embeddings
-CREATE OR REPLACE FUNCTION normalize_embedding()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.embedding IS NOT NULL THEN
-        -- Normalize the embedding vector using l2_normalize
-        NEW.embedding = l2_normalize(NEW.embedding);
+    -- Now create all triggers
+    -- Type Schemas
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_type_schemas_updated_at') THEN
+        CREATE TRIGGER update_type_schemas_updated_at
+            BEFORE UPDATE ON type_schemas
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
     END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
 
--- Create trigger to normalize embeddings on insert and update
-CREATE TRIGGER normalize_memory_embedding
-    BEFORE INSERT OR UPDATE OF embedding ON public.memories
-    FOR EACH ROW
-    EXECUTE FUNCTION normalize_embedding();
+    -- Workflow Schemas
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_workflow_schemas_updated_at') THEN
+        CREATE TRIGGER update_workflow_schemas_updated_at
+            BEFORE UPDATE ON workflow_schemas
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
 
--- Add a debug function to check vector normalization
-CREATE OR REPLACE FUNCTION debug_vector_info(v vector(1536)) 
-RETURNS TABLE (
-    original_norm float8,
-    normalized_norm float8,
-    is_normalized boolean
-) AS $$
-    SELECT 
-        sqrt(v <-> v) as original_norm,
-        sqrt(l2_normalize(v) <-> l2_normalize(v)) as normalized_norm,
-        abs(1 - sqrt(v <-> v)) < 0.000001 as is_normalized;
-$$ LANGUAGE SQL IMMUTABLE;
+    -- Workflow Runs
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_workflow_runs_updated_at') THEN
+        CREATE TRIGGER update_workflow_runs_updated_at
+            BEFORE UPDATE ON workflow_runs
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
 
--- Modify the search function to work with normalized embeddings
-CREATE OR REPLACE FUNCTION public.search_memories(
-    query_embedding vector(1536),
-    match_threshold float8,
-    match_count integer,
-    filter_agent_id uuid DEFAULT NULL
-)
-RETURNS SETOF public.memories_with_similarity
-LANGUAGE sql
-STABLE
-AS $$
-    WITH normalized_query AS (
-        SELECT l2_normalize(query_embedding) AS normalized_vector
-    )
-    SELECT 
-        m.id,
-        m.agent_id,
-        m.content,
-        m.metadata,
-        m.embedding,
-        m.created_at,
-        m.updated_at,
-        -(m.embedding <#> (SELECT normalized_vector FROM normalized_query)) as similarity
-    FROM memories m
-    WHERE
-        CASE 
-            WHEN filter_agent_id IS NOT NULL THEN m.agent_id = filter_agent_id
-            ELSE TRUE
-        END
-        -- Re-enable threshold with corrected sign
-        AND -(m.embedding <#> (SELECT normalized_vector FROM normalized_query)) >= match_threshold
-    ORDER BY -(m.embedding <#> (SELECT normalized_vector FROM normalized_query)) DESC
-    LIMIT match_count;
-$$;
+    -- Workflow Results
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_workflow_results_updated_at') THEN
+        CREATE TRIGGER update_workflow_results_updated_at
+            BEFORE UPDATE ON workflow_results
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
 
--- Track the function in Hasura
-COMMENT ON FUNCTION public.search_memories IS E'@graphql({"type": "Query"})';
+    -- Memories
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_memories_updated_at') THEN
+        CREATE TRIGGER update_memories_updated_at
+            BEFORE UPDATE ON memories
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
 
--- Create function to get connected memories
+    -- Memory Chunks
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_memory_chunks_updated_at') THEN
+        CREATE TRIGGER update_memory_chunks_updated_at
+            BEFORE UPDATE ON memory_chunks
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'normalize_memory_chunk_embedding') THEN
+        CREATE TRIGGER normalize_memory_chunk_embedding
+            BEFORE INSERT OR UPDATE OF embedding ON memory_chunks
+            FOR EACH ROW
+            EXECUTE FUNCTION normalize_embedding();
+    END IF;
+
+    -- Memory Edges
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_memory_edges_updated_at') THEN
+        CREATE TRIGGER update_memory_edges_updated_at
+            BEFORE UPDATE ON memory_edges
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
+
+-- Create indexes safely
+DO $$
+BEGIN
+    -- Drop existing indexes first
+    DROP INDEX IF EXISTS idx_memory_chunks_embedding;
+    DROP INDEX IF EXISTS idx_memory_edges_source;
+    DROP INDEX IF EXISTS idx_memory_edges_target;
+    DROP INDEX IF EXISTS idx_memory_edges_type;
+
+    -- Create new indexes
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'idx_memory_chunks_embedding' AND n.nspname = 'public'
+    ) THEN
+        CREATE INDEX idx_memory_chunks_embedding 
+        ON memory_chunks USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'idx_memory_edges_source' AND n.nspname = 'public'
+    ) THEN
+        CREATE INDEX idx_memory_edges_source ON memory_edges(source_memory);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'idx_memory_edges_target' AND n.nspname = 'public'
+    ) THEN
+        CREATE INDEX idx_memory_edges_target ON memory_edges(target_memory);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'idx_memory_edges_type' AND n.nspname = 'public'
+    ) THEN
+        CREATE INDEX idx_memory_edges_type ON memory_edges(type);
+    END IF;
+END $$;
+
+-- Create views for search results
+CREATE OR REPLACE VIEW memory_connections_with_details AS
+SELECT 
+    e.source_memory as source_id,
+    e.target_memory as target_id,
+    e.type as relationship,
+    e.weight,
+    e.metadata,
+    e.created_at,
+    e.updated_at,
+    source_mem.content as source_content,
+    target_mem.content as target_content,
+    source_mem.type as source_type,
+    target_mem.type as target_type
+FROM memory_edges e
+JOIN memories source_mem ON e.source_memory = source_mem.id
+JOIN memories target_mem ON e.target_memory = target_mem.id;
+
+-- Create view for memory embeddings info
+CREATE OR REPLACE VIEW memory_embeddings_info AS
+SELECT 
+    id as memory_id,
+    content,
+    sqrt(embedding <-> embedding) as embedding_norm,
+    abs(1 - sqrt(embedding <-> embedding)) < 0.000001 as is_normalized
+FROM memory_chunks
+WHERE embedding IS NOT NULL;
+
+-- Create helper functions
 CREATE OR REPLACE FUNCTION get_connected_memories(
     memory_id uuid,
     relationship_type text DEFAULT NULL,
     max_depth integer DEFAULT 1
 )
-RETURNS TABLE (
-    source_id UUID,
-    target_id UUID,
-    relationship TEXT,
-    weight FLOAT,
-    depth INTEGER
-) AS $$
-WITH RECURSIVE memory_graph AS (
-    -- Base case
-    SELECT 
-        source_memory,
-        target_memory,
-        relationship,
-        weight,
-        1 as depth
-    FROM public.memory_edges
-    WHERE 
-        (source_memory = memory_id OR target_memory = memory_id)
-        AND (relationship_type IS NULL OR relationship = relationship_type)
-    
-    UNION
-    
-    -- Recursive case
-    SELECT 
-        e.source_memory,
-        e.target_memory,
-        e.relationship,
-        e.weight,
-        g.depth + 1
-    FROM public.memory_edges e
-    INNER JOIN memory_graph g ON 
-        (e.source_memory = g.target_memory OR e.target_memory = g.source_memory)
-    WHERE 
-        g.depth < max_depth
-        AND (relationship_type IS NULL OR e.relationship = relationship_type)
-)
-SELECT DISTINCT
-    source_memory as source_id,
-    target_memory as target_id,
-    relationship,
-    weight,
-    depth
-FROM memory_graph;
-$$ LANGUAGE SQL STABLE;
+RETURNS SETOF memory_connections_with_details
+LANGUAGE sql STABLE AS $$
+    WITH RECURSIVE memory_graph AS (
+        -- Base case
+        SELECT 
+            source_memory,
+            target_memory,
+            type as relationship,
+            weight,
+            metadata,
+            created_at,
+            updated_at,
+            1 as depth
+        FROM memory_edges
+        WHERE 
+            (source_memory = memory_id OR target_memory = memory_id)
+            AND (relationship_type IS NULL OR type = relationship_type)
+        
+        UNION
+        
+        -- Recursive case
+        SELECT 
+            e.source_memory,
+            e.target_memory,
+            e.type,
+            e.weight,
+            e.metadata,
+            e.created_at,
+            e.updated_at,
+            g.depth + 1
+        FROM memory_edges e
+        INNER JOIN memory_graph g ON 
+            (e.source_memory = g.target_memory OR e.target_memory = g.source_memory)
+        WHERE 
+            g.depth < max_depth
+            AND (relationship_type IS NULL OR e.type = relationship_type)
+    )
+    SELECT DISTINCT
+        mc.*
+    FROM memory_graph g
+    JOIN memory_connections_with_details mc ON 
+        (mc.source_id = g.source_memory AND mc.target_id = g.target_memory);
+$$;
 
--- Add a function to inspect memory embeddings
 CREATE OR REPLACE FUNCTION inspect_memory_embeddings()
-RETURNS TABLE (
-    memory_id UUID,
-    content TEXT,
-    embedding_norm float8,
-    is_normalized boolean
-) AS $$
-    SELECT 
-        id,
-        content,
-        sqrt(embedding <-> embedding) as embedding_norm,
-        abs(1 - sqrt(embedding <-> embedding)) < 0.000001 as is_normalized
-    FROM memories
-    WHERE embedding IS NOT NULL;
-$$ LANGUAGE SQL STABLE; 
+RETURNS SETOF memory_embeddings_info
+LANGUAGE sql STABLE AS $$
+    SELECT * FROM memory_embeddings_info;
+$$;
+
+-- Add helpful comments
+COMMENT ON TABLE type_schemas IS 
+'Defines valid types for memories and their associated schemas and configurations.';
+
+COMMENT ON TABLE workflow_schemas IS 
+'Defines valid workflow types and their input/output schemas.';
+
+COMMENT ON TABLE workflow_runs IS 
+'Records of workflow executions with their inputs and status.';
+
+COMMENT ON TABLE workflow_results IS 
+'Results of completed workflow runs.';
+
+COMMENT ON TABLE memories IS 
+'Core memory storage with type validation against type_schemas.';
+
+COMMENT ON TABLE memory_chunks IS 
+'Chunked content from memories with vector embeddings for semantic search.';
+
+COMMENT ON TABLE memory_edges IS 
+'Relationships between memories with type and weight.';
+
+COMMENT ON VIEW memory_embeddings_info IS 
+'View providing information about memory chunk embeddings including normalization status.';
+
+COMMENT ON FUNCTION inspect_memory_embeddings IS 
+'Inspect memory chunk embeddings to verify normalization and get embedding norms.'; 

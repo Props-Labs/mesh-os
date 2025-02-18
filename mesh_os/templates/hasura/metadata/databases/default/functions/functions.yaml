@@ -1,0 +1,20 @@
+- function:
+    schema: public
+    name: get_connected_memories
+  configuration:
+    custom_name: getConnectedMemories
+    exposed: true
+    arguments:
+      - name: memory_id
+        type: uuid!
+      - name: relationship_type
+        type: String
+      - name: max_depth
+        type: Int
+
+- function:
+    schema: public
+    name: inspect_memory_embeddings
+  configuration:
+    custom_name: inspectMemoryEmbeddings
+    exposed: true 

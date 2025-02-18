@@ -2,8 +2,12 @@
     name: agents
     schema: public
   configuration:
-    custom_root_fields: {}
-    custom_name: agents
+    custom_name: agent
+    column_config:
+      created_at:
+        custom_name: createdAt
+      updated_at:
+        custom_name: updatedAt
   array_relationships:
     - name: memories
       using:
@@ -12,26 +16,68 @@
           table:
             name: memories
             schema: public
+    - name: memoryChunks
+      using:
+        foreign_key_constraint_on:
+          column: agent_id
+          table:
+            name: memory_chunks
+            schema: public
+    - name: memoryRelations
+      using:
+        foreign_key_constraint_on:
+          column: agent_id
+          table:
+            name: memory_edges
+            schema: public
+    - name: workflowRuns
+      using:
+        foreign_key_constraint_on:
+          column: agent_id
+          table:
+            name: workflow_runs
+            schema: public
+    - name: workflowResults
+      using:
+        foreign_key_constraint_on:
+          column: agent_id
+          table:
+            name: workflow_results
+            schema: public
 
 - table:
     name: memories
     schema: public
   configuration:
-    custom_root_fields: {}
-    custom_name: memories
+    custom_name: memory
+    column_config:
+      created_at:
+        custom_name: createdAt
+      updated_at:
+        custom_name: updatedAt
   object_relationships:
     - name: agent
       using:
         foreign_key_constraint_on: agent_id
+    - name: schema
+      using:
+        foreign_key_constraint_on: type
   array_relationships:
-    - name: incoming_edges
+    - name: chunks
+      using:
+        foreign_key_constraint_on:
+          column: memory_id
+          table:
+            name: memory_chunks
+            schema: public
+    - name: incomingEdges
       using:
         foreign_key_constraint_on:
           column: target_memory
           table:
             name: memory_edges
             schema: public
-    - name: outgoing_edges
+    - name: outgoingEdges
       using:
         foreign_key_constraint_on:
           column: source_memory
@@ -40,15 +86,162 @@
             schema: public
 
 - table:
+    name: memory_chunks
+    schema: public
+  configuration:
+    custom_name: memoryChunk
+    column_config:
+      created_at:
+        custom_name: createdAt
+      updated_at:
+        custom_name: updatedAt
+  object_relationships:
+    - name: agent
+      using:
+        foreign_key_constraint_on: agent_id
+    - name: memory
+      using:
+        foreign_key_constraint_on: memory_id
+
+- table:
     name: memory_edges
     schema: public
   configuration:
-    custom_root_fields: {}
-    custom_name: memory_edges
+    custom_name: memoryRelation
+    column_config:
+      created_at:
+        custom_name: createdAt
+      updated_at:
+        custom_name: updatedAt
+      source_memory:
+        custom_name: sourceMemory
+      target_memory:
+        custom_name: targetMemory
   object_relationships:
+    - name: agent
+      using:
+        foreign_key_constraint_on: agent_id
     - name: source
       using:
         foreign_key_constraint_on: source_memory
     - name: target
       using:
-        foreign_key_constraint_on: target_memory 
+        foreign_key_constraint_on: target_memory
+
+- table:
+    name: workflow_runs
+    schema: public
+  configuration:
+    custom_name: workflowRun
+    column_config:
+      created_at:
+        custom_name: createdAt
+      updated_at:
+        custom_name: updatedAt
+  object_relationships:
+    - name: agent
+      using:
+        foreign_key_constraint_on: agent_id
+    - name: schema
+      using:
+        foreign_key_constraint_on: type
+  array_relationships:
+    - name: results
+      using:
+        foreign_key_constraint_on:
+          column: workflow_id
+          table:
+            name: workflow_results
+            schema: public
+
+- table:
+    name: workflow_results
+    schema: public
+  configuration:
+    custom_name: workflowResult
+    column_config:
+      created_at:
+        custom_name: createdAt
+      updated_at:
+        custom_name: updatedAt
+  object_relationships:
+    - name: agent
+      using:
+        foreign_key_constraint_on: agent_id
+    - name: run
+      using:
+        foreign_key_constraint_on: workflow_id
+
+- table:
+    name: type_schemas
+    schema: public
+  configuration:
+    custom_name: typeSchema
+    column_config:
+      created_at:
+        custom_name: createdAt
+      updated_at:
+        custom_name: updatedAt
+  array_relationships:
+    - name: memories
+      using:
+        foreign_key_constraint_on:
+          column: type
+          table:
+            name: memories
+            schema: public
+
+- table:
+    name: workflow_schemas
+    schema: public
+  configuration:
+    custom_name: workflowSchema
+    column_config:
+      created_at:
+        custom_name: createdAt
+      updated_at:
+        custom_name: updatedAt
+  array_relationships:
+    - name: runs
+      using:
+        foreign_key_constraint_on:
+          column: type
+          table:
+            name: workflow_runs
+            schema: public
+
+- table:
+    name: memory_connections_with_details
+    schema: public
+  configuration:
+    custom_name: memoryConnection
+    column_config:
+      created_at:
+        custom_name: createdAt
+      updated_at:
+        custom_name: updatedAt
+      source_id:
+        custom_name: sourceId
+      target_id:
+        custom_name: targetId
+      source_content:
+        custom_name: sourceContent
+      target_content:
+        custom_name: targetContent
+      source_type:
+        custom_name: sourceType
+      target_type:
+        custom_name: targetType
+
+- table:
+    name: memory_embeddings_info
+    schema: public
+  configuration:
+    custom_name: memoryEmbeddingInfo
+    column_config:
+      memory_id:
+        custom_name: memoryId
+      embedding_norm:
+        custom_name: embeddingNorm
+      is_normalized:
+        custom_name: isNormalized 

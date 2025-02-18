@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mesh-os"
-version = "0.1.11"
+version = "0.2.0"
 description = "MeshOS - A lightweight multi-agent memory system with semantic search"
 authors = ["Calvin Hoenes <calvin@props.app>"]
 readme = "README.md"
