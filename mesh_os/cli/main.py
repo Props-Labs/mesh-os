@@ -804,6 +804,38 @@ def up():
                             }
                         },
                         {
+                            "type": "pg_track_table",
+                            "args": {
+                                "source": "default",
+                                "schema": "public",
+                                "name": "search_results_with_similarity"
+                            }
+                        },
+                        {
+                            "type": "pg_track_table",
+                            "args": {
+                                "source": "default",
+                                "schema": "public",
+                                "name": "entities"
+                            }
+                        },
+                        {
+                            "type": "pg_track_table",
+                            "args": {
+                                "source": "default",
+                                "schema": "public",
+                                "name": "entity_memory_links"
+                            }
+                        },
+                        {
+                            "type": "pg_track_table",
+                            "args": {
+                                "source": "default",
+                                "schema": "public",
+                                "name": "workflows"
+                            }
+                        },
+                        {
                             "type": "pg_track_function",
                             "args": {
                                 "function": {
@@ -821,6 +853,20 @@ def up():
                                     ]
                                 },
                                 "comment": "Function for semantic search of memories with similarity scores"
+                            }
+                        },
+                        {
+                            "type": "pg_track_function",
+                            "args": {
+                                "function": {
+                                    "schema": "public",
+                                    "name": "search_memories_and_entities"
+                                },
+                                "source": "default",
+                                "configuration": {
+                                    "exposed_as": "query"
+                                },
+                                "comment": "Function for combined semantic search of memories and entities"
                             }
                         },
                         {
@@ -894,6 +940,74 @@ def up():
                                             "name": "memory_edges"
                                         }
                                     }
+                                }
+                            }
+                        },
+                        {
+                            "type": "pg_create_array_relationship",
+                            "args": {
+                                "table": {
+                                    "schema": "public",
+                                    "name": "memories"
+                                },
+                                "name": "entity_links",
+                                "source": "default",
+                                "using": {
+                                    "foreign_key_constraint_on": {
+                                        "column": "memory_id",
+                                        "table": {
+                                            "schema": "public",
+                                            "name": "entity_memory_links"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "type": "pg_create_array_relationship",
+                            "args": {
+                                "table": {
+                                    "schema": "public",
+                                    "name": "entities"
+                                },
+                                "name": "memory_links",
+                                "source": "default",
+                                "using": {
+                                    "foreign_key_constraint_on": {
+                                        "column": "entity_id",
+                                        "table": {
+                                            "schema": "public",
+                                            "name": "entity_memory_links"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "type": "pg_create_object_relationship",
+                            "args": {
+                                "table": {
+                                    "schema": "public",
+                                    "name": "entity_memory_links"
+                                },
+                                "name": "entity",
+                                "source": "default",
+                                "using": {
+                                    "foreign_key_constraint_on": "entity_id"
+                                }
+                            }
+                        },
+                        {
+                            "type": "pg_create_object_relationship",
+                            "args": {
+                                "table": {
+                                    "schema": "public",
+                                    "name": "entity_memory_links"
+                                },
+                                "name": "memory",
+                                "source": "default",
+                                "using": {
+                                    "foreign_key_constraint_on": "memory_id"
                                 }
                             }
                         },
@@ -1208,6 +1322,38 @@ def remote_up(url: str, admin_secret: str, clean: bool):
                         }
                     },
                     {
+                        "type": "pg_track_table",
+                        "args": {
+                            "source": "default",
+                            "schema": "public",
+                            "name": "search_results_with_similarity"
+                        }
+                    },
+                    {
+                        "type": "pg_track_table",
+                        "args": {
+                            "source": "default",
+                            "schema": "public",
+                            "name": "entities"
+                        }
+                    },
+                    {
+                        "type": "pg_track_table",
+                        "args": {
+                            "source": "default",
+                            "schema": "public",
+                            "name": "entity_memory_links"
+                        }
+                    },
+                    {
+                        "type": "pg_track_table",
+                        "args": {
+                            "source": "default",
+                            "schema": "public",
+                            "name": "workflows"
+                        }
+                    },
+                    {
                         "type": "pg_track_function",
                         "args": {
                             "function": {
@@ -1225,6 +1371,20 @@ def remote_up(url: str, admin_secret: str, clean: bool):
                                 ]
                             },
                             "comment": "Function for semantic search of memories with similarity scores"
+                        }
+                    },
+                    {
+                        "type": "pg_track_function",
+                        "args": {
+                            "function": {
+                                "schema": "public",
+                                "name": "search_memories_and_entities"
+                            },
+                            "source": "default",
+                            "configuration": {
+                                "exposed_as": "query"
+                            },
+                            "comment": "Function for combined semantic search of memories and entities"
                         }
                     },
                     {
@@ -1298,6 +1458,74 @@ def remote_up(url: str, admin_secret: str, clean: bool):
                                         "name": "memory_edges"
                                     }
                                 }
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_array_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "memories"
+                            },
+                            "name": "entity_links",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": {
+                                    "column": "memory_id",
+                                    "table": {
+                                        "schema": "public",
+                                        "name": "entity_memory_links"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_array_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "entities"
+                            },
+                            "name": "memory_links",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": {
+                                    "column": "entity_id",
+                                    "table": {
+                                        "schema": "public",
+                                        "name": "entity_memory_links"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_object_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "entity_memory_links"
+                            },
+                            "name": "entity",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": "entity_id"
+                            }
+                        }
+                    },
+                    {
+                        "type": "pg_create_object_relationship",
+                        "args": {
+                            "table": {
+                                "schema": "public",
+                                "name": "entity_memory_links"
+                            },
+                            "name": "memory",
+                            "source": "default",
+                            "using": {
+                                "foreign_key_constraint_on": "memory_id"
                             }
                         }
                     },
