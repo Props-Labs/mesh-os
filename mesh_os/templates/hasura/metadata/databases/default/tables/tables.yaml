@@ -234,6 +234,41 @@
         custom_name: targetType
 
 - table:
+    name: memory_chunks_with_details
+    schema: public
+  configuration:
+    custom_name: memoryChunkWithDetails
+    column_config:
+      chunk_id:
+        custom_name: chunkId
+      memory_id:
+        custom_name: memoryId
+      chunk_index:
+        custom_name: chunkIndex
+      chunk_content:
+        custom_name: chunkContent
+      chunk_metadata:
+        custom_name: chunkMetadata
+      chunk_created_at:
+        custom_name: chunkCreatedAt
+      chunk_updated_at:
+        custom_name: chunkUpdatedAt
+      memory_content:
+        custom_name: memoryContent
+      memory_type:
+        custom_name: memoryType
+      memory_status:
+        custom_name: memoryStatus
+      memory_metadata:
+        custom_name: memoryMetadata
+      memory_created_at:
+        custom_name: memoryCreatedAt
+      memory_updated_at:
+        custom_name: memoryUpdatedAt
+      agent_id:
+        custom_name: agentId
+
+- table:
     name: memory_embeddings_info
     schema: public
   configuration:
@@ -244,4 +279,41 @@
       embedding_norm:
         custom_name: embeddingNorm
       is_normalized:
-        custom_name: isNormalized 
+        custom_name: isNormalized
+
+- table:
+    name: memory_search_results
+    schema: public
+  configuration:
+    custom_name: memorySearchResult
+    column_config:
+      chunk_id:
+        custom_name: chunkId
+      memory_id:
+        custom_name: memoryId
+      chunk_index:
+        custom_name: chunkIndex
+      chunk_content:
+        custom_name: chunkContent
+      chunk_metadata:
+        custom_name: chunkMetadata
+      chunk_created_at:
+        custom_name: chunkCreatedAt
+      chunk_updated_at:
+        custom_name: chunkUpdatedAt
+      memory_content:
+        custom_name: memoryContent
+      memory_type:
+        custom_name: memoryType
+      memory_status:
+        custom_name: memoryStatus
+      memory_metadata:
+        custom_name: memoryMetadata
+      memory_created_at:
+        custom_name: memoryCreatedAt
+      memory_updated_at:
+        custom_name: memoryUpdatedAt
+      agent_id:
+        custom_name: agentId
+      similarity:
+        custom_name: similarity 

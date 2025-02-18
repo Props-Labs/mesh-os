@@ -17,4 +17,64 @@
     name: inspect_memory_embeddings
   configuration:
     custom_name: inspectMemoryEmbeddings
-    exposed: true 
+    exposed: true
+    column_config:
+      memory_id:
+        custom_name: memoryId
+      embedding_norm:
+        custom_name: embeddingNorm
+      is_normalized:
+        custom_name: isNormalized
+
+- function:
+    schema: public
+    name: search_memory_chunks
+  configuration:
+    custom_name: searchMemoryChunks
+    exposed: true
+    arguments:
+      - name: query_embedding
+        type: vector!
+      - name: match_threshold
+        type: Float!
+      - name: match_count
+        type: Int!
+      - name: filter_agent_id
+        type: uuid
+      - name: memory_metadata_filter
+        type: jsonb
+      - name: chunk_metadata_filter
+        type: jsonb
+      - name: created_at_filter
+        type: jsonb
+    column_config:
+      chunk_id:
+        custom_name: chunkId
+      memory_id:
+        custom_name: memoryId
+      chunk_index:
+        custom_name: chunkIndex
+      chunk_content:
+        custom_name: chunkContent
+      chunk_metadata:
+        custom_name: chunkMetadata
+      chunk_created_at:
+        custom_name: chunkCreatedAt
+      chunk_updated_at:
+        custom_name: chunkUpdatedAt
+      memory_content:
+        custom_name: memoryContent
+      memory_type:
+        custom_name: memoryType
+      memory_status:
+        custom_name: memoryStatus
+      memory_metadata:
+        custom_name: memoryMetadata
+      memory_created_at:
+        custom_name: memoryCreatedAt
+      memory_updated_at:
+        custom_name: memoryUpdatedAt
+      agent_id:
+        custom_name: agentId
+      similarity:
+        custom_name: similarity 

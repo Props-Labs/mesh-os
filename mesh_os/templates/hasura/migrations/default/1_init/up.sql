@@ -263,6 +263,27 @@ FROM memory_edges e
 JOIN memories source_mem ON e.source_memory = source_mem.id
 JOIN memories target_mem ON e.target_memory = target_mem.id;
 
+-- Create views for search results
+CREATE OR REPLACE VIEW memory_chunks_with_details AS
+SELECT 
+    mc.id as chunk_id,
+    mc.memory_id,
+    mc.chunk_index,
+    mc.content as chunk_content,
+    mc.embedding,
+    mc.metadata as chunk_metadata,
+    mc.created_at as chunk_created_at,
+    mc.updated_at as chunk_updated_at,
+    m.content as memory_content,
+    m.type as memory_type,
+    m.status as memory_status,
+    m.metadata as memory_metadata,
+    m.created_at as memory_created_at,
+    m.updated_at as memory_updated_at,
+    NULL::uuid as agent_id
+FROM memory_chunks mc
+JOIN memories m ON mc.memory_id = m.id;
+
 -- Create view for memory embeddings info
 CREATE OR REPLACE VIEW memory_embeddings_info AS
 SELECT 
@@ -272,6 +293,27 @@ SELECT
     abs(1 - sqrt(embedding <-> embedding)) < 0.000001 as is_normalized
 FROM memory_chunks
 WHERE embedding IS NOT NULL;
+
+-- Create view for search results
+CREATE OR REPLACE VIEW memory_search_results AS
+SELECT 
+    chunk_id,
+    memory_id,
+    chunk_index,
+    chunk_content,
+    chunk_metadata,
+    chunk_created_at,
+    chunk_updated_at,
+    memory_content,
+    memory_type,
+    memory_status,
+    memory_metadata,
+    memory_created_at,
+    memory_updated_at,
+    agent_id,
+    0.0::float as similarity
+FROM memory_chunks_with_details
+WHERE false;  -- Empty by default, will be populated by function
 
 -- Create helper functions
 CREATE OR REPLACE FUNCTION get_connected_memories(
@@ -329,6 +371,87 @@ LANGUAGE sql STABLE AS $$
     SELECT * FROM memory_embeddings_info;
 $$;
 
+CREATE OR REPLACE FUNCTION search_memory_chunks(
+    query_embedding vector,
+    match_threshold double precision,
+    match_count integer,
+    filter_agent_id uuid DEFAULT NULL::uuid,
+    memory_metadata_filter jsonb DEFAULT NULL::jsonb,
+    chunk_metadata_filter jsonb DEFAULT NULL::jsonb,
+    created_at_filter jsonb DEFAULT NULL::jsonb
+)
+RETURNS SETOF memory_search_results
+LANGUAGE sql STABLE AS $$
+    WITH normalized_query AS (
+        SELECT l2_normalize(query_embedding) AS normalized_vector
+    )
+    SELECT
+        cd.chunk_id,
+        cd.memory_id,
+        cd.chunk_index,
+        cd.chunk_content,
+        cd.chunk_metadata,
+        cd.chunk_created_at,
+        cd.chunk_updated_at,
+        cd.memory_content,
+        cd.memory_type,
+        cd.memory_status,
+        cd.memory_metadata,
+        cd.memory_created_at,
+        cd.memory_updated_at,
+        cd.agent_id,
+        -(cd.embedding <#> (SELECT normalized_vector FROM normalized_query)) as similarity
+    FROM memory_chunks_with_details cd
+    WHERE
+        CASE
+            WHEN filter_agent_id IS NOT NULL THEN cd.agent_id = filter_agent_id
+            ELSE TRUE
+        END
+        AND CASE
+            WHEN memory_metadata_filter IS NOT NULL THEN cd.memory_metadata @> memory_metadata_filter
+            ELSE TRUE
+        END
+        AND CASE
+            WHEN chunk_metadata_filter IS NOT NULL THEN cd.chunk_metadata @> chunk_metadata_filter
+            ELSE TRUE
+        END
+        AND CASE
+            WHEN created_at_filter IS NOT NULL THEN (
+                CASE
+                    WHEN created_at_filter ? '_gt' THEN cd.chunk_created_at > (created_at_filter->>'_gt')::timestamptz AT TIME ZONE 'UTC'
+                    ELSE TRUE
+                END
+                AND CASE
+                    WHEN created_at_filter ? '_gte' THEN cd.chunk_created_at >= (created_at_filter->>'_gte')::timestamptz AT TIME ZONE 'UTC'
+                    ELSE TRUE
+                END
+                AND CASE
+                    WHEN created_at_filter ? '_lt' THEN cd.chunk_created_at < (created_at_filter->>'_lt')::timestamptz AT TIME ZONE 'UTC'
+                    ELSE TRUE
+                END
+                AND CASE
+                    WHEN created_at_filter ? '_lte' THEN cd.chunk_created_at <= (created_at_filter->>'_lte')::timestamptz AT TIME ZONE 'UTC'
+                    ELSE TRUE
+                END
+                AND CASE
+                    WHEN created_at_filter ? '_eq' THEN cd.chunk_created_at = (created_at_filter->>'_eq')::timestamptz AT TIME ZONE 'UTC'
+                    ELSE TRUE
+                END
+                AND CASE
+                    WHEN created_at_filter ? '_is_null' AND (created_at_filter->>'_is_null')::boolean THEN cd.chunk_created_at IS NULL
+                    WHEN created_at_filter ? '_is_null' AND NOT (created_at_filter->>'_is_null')::boolean THEN cd.chunk_created_at IS NOT NULL
+                    ELSE TRUE
+                END
+            )
+            ELSE TRUE
+        END
+        AND cd.embedding IS NOT NULL
+        AND -(cd.embedding <#> (SELECT normalized_vector FROM normalized_query)) >= match_threshold
+    ORDER BY
+        -(cd.embedding <#> (SELECT normalized_vector FROM normalized_query)) DESC
+    LIMIT match_count;
+$$;
+
 -- Add helpful comments
 COMMENT ON TABLE type_schemas IS 
 'Defines valid types for memories and their associated schemas and configurations.';
@@ -355,4 +478,10 @@ COMMENT ON VIEW memory_embeddings_info IS
 'View providing information about memory chunk embeddings including normalization status.';
 
 COMMENT ON FUNCTION inspect_memory_embeddings IS 
-'Inspect memory chunk embeddings to verify normalization and get embedding norms.'; 
+'Inspect memory chunk embeddings to verify normalization and get embedding norms.';
+
+COMMENT ON VIEW memory_chunks_with_details IS 
+'View combining memory chunks with their parent memory details for search results.';
+
+COMMENT ON FUNCTION search_memory_chunks IS 
+'Search for similar memory chunks and return both chunk and memory details with similarity scores.'; 
